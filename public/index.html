@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Chat App</title>
+
+  <!--
+    Socket.IO client library.
+    When your server runs Socket.IO, it automatically serves this script.
+    This is what lets the browser open a real-time connection to the server.
+  -->
+  <script src="/socket.io/socket.io.js"></script>
+
+  <style>
+    /* ── RESET & BASE ── */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f2f5;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ── SCREENS ──
+       We have two screens: #auth-screen and #chat-screen.
+       Only one is visible at a time.
+       .hidden = display:none = completely invisible and takes no space.
+    */
+    .hidden {
+      display: none !important;
+    }
+
+    /* ── AUTH SCREEN (login / register) ── */
+    #auth-screen {
+      background: white;
+      padding: 40px;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 380px;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.1);
+    }
+
+    #auth-screen h1 {
+      text-align: center;
+      margin-bottom: 24px;
+      font-size: 24px;
+      color: #111;
+    }
+
+    #auth-screen input {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 12px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 15px;
+      outline: none;
+    }
+
+    #auth-screen input:focus {
+      border-color: #0084ff;
+    }
+
+    #auth-screen button {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 8px;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    #btn-login {
+      background: #0084ff;
+      color: white;
+    }
+
+    #btn-register {
+      background: #e4e6eb;
+      color: #111;
+    }
+
+    #auth-error {
+      color: red;
+      font-size: 13px;
+      text-align: center;
+      margin-top: 8px;
+      min-height: 18px; /* keeps layout stable even when empty */
+    }
+
+    /* ── CHAT SCREEN ── */
+    #chat-screen {
+      width: 100%;
+      max-width: 700px;
+      height: 90vh;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column; /* stack header, messages, input vertically */
+      overflow: hidden;
+    }
+
+    /* Top bar showing who you're logged in as */
+    #chat-header {
+      background: #0084ff;
+      color: white;
+      padding: 16px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 15px;
+      flex-shrink: 0; /* don't shrink when message list grows */
+    }
+
+    #chat-header button {
+      background: rgba(255,255,255,0.2);
+      border: none;
+      color: white;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    /* "Chatting with:" bar */
+    #recipient-bar {
+      padding: 10px 20px;
+      background: #f7f8fa;
+      border-bottom: 1px solid #e4e6eb;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    #recipient-bar input {
+      flex: 1; /* take up remaining space */
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      outline: none;
+    }
+
+    #recipient-bar button {
+      padding: 8px 16px;
+      background: #0084ff;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    /* The scrollable message list */
+    #messages {
+      flex: 1;         /* take all remaining vertical space */
+      overflow-y: auto; /* scroll when messages overflow */
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* Individual message bubble */
+    .message {
+      max-width: 65%;
+      padding: 10px 14px;
+      border-radius: 18px;
+      font-size: 14px;
+      line-height: 1.4;
+      word-wrap: break-word;
+    }
+
+    /* Messages YOU sent — right side, blue */
+    .message.sent {
+      align-self: flex-end;
+      background: #0084ff;
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+
+    /* Messages you RECEIVED — left side, grey */
+    .message.received {
+      align-self: flex-start;
+      background: #e4e6eb;
+      color: #111;
+      border-bottom-left-radius: 4px;
+    }
+
+    .message .meta {
+      font-size: 11px;
+      margin-top: 4px;
+      opacity: 0.7;
+    }
+
+    /* Input area at the bottom */
+    #input-area {
+      padding: 16px 20px;
+      border-top: 1px solid #e4e6eb;
+      display: flex;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    #input-area input {
+      flex: 1;
+      padding: 12px 16px;
+      border: 1px solid #ddd;
+      border-radius: 24px; /* pill shape */
+      font-size: 14px;
+      outline: none;
+    }
+
+    #input-area input:focus {
+      border-color: #0084ff;
+    }
+
+    #input-area button {
+      padding: 12px 20px;
+      background: #0084ff;
+      color: white;
+      border: none;
+      border-radius: 24px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    /* System messages (e.g. "Connected to chat with Bob") */
+    .system-msg {
+      text-align: center;
+      font-size: 12px;
+      color: #999;
+      margin: 4px 0;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ══════════════════════════════════════
+       SCREEN 1: AUTH (Login / Register)
+       Shown by default. Hidden after login.
+  ══════════════════════════════════════ -->
+  <div id="auth-screen">
+    <h1>💬 Chat App</h1>
+
+    <input type="text"     id="username-input" placeholder="Username" />
+    <input type="password" id="password-input" placeholder="Password" />
+
+    <button id="btn-login"    onclick="login()">Log In</button>
+    <button id="btn-register" onclick="register()">Create Account</button>
+
+    <!-- Error messages appear here -->
+    <p id="auth-error"></p>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       SCREEN 2: CHAT
+       Hidden by default. Shown after login.
+  ══════════════════════════════════════ -->
+  <div id="chat-screen" class="hidden">
+
+    <!-- Top bar -->
+    <div id="chat-header">
+      <span id="logged-in-as">Logged in as: </span>
+      <button onclick="logout()">Log Out</button>
+    </div>
+
+    <!-- Who to chat with -->
+    <div id="recipient-bar">
+      <span style="font-size:14px; color:#555;">Chat with:</span>
+      <input type="text" id="recipient-input" placeholder="Enter username..." />
+      <button onclick="startChat()">Open Chat</button>
+    </div>
+
+    <!-- Message history appears here -->
+    <div id="messages"></div>
+
+    <!-- Type and send messages -->
+    <div id="input-area">
+      <input
+        type="text"
+        id="message-input"
+        placeholder="Type a message..."
+        onkeydown="if(event.key === 'Enter') sendMessage()"
+      />
+      <!--
+        onkeydown listens for keypresses.
+        If the key pressed is Enter, it calls sendMessage().
+        This means you can press Enter instead of clicking Send.
+      -->
+      <button onclick="sendMessage()">Send</button>
+    </div>
+
+  </div>
+
+
+  <script>
+    // ═══════════════════════════════════════════════════
+    // STATE
+    // These variables hold the "current state" of the app.
+    // They're just regular JS variables — nothing fancy.
+    // ═══════════════════════════════════════════════════
+
+    let currentUser = null;   // username of whoever is logged in
+    let currentToken = null;  // JWT token received after login
+    let currentRoom = null;   // the active chat room ID
+    let currentRecipient = null; // who we're currently chatting with
+
+    // Connect to Socket.IO on the server.
+    // Since the frontend is served from the same server,
+    // we don't need a URL — it connects automatically.
+    const socket = io();
+
+
+    // ═══════════════════════════════════════════════════
+    // HELPER: Build a room ID from two usernames
+    //
+    // A room is just a string both users share.
+    // We sort alphabetically so alice+bob and bob+alice
+    // produce the same room: "alice_bob"
+    // ═══════════════════════════════════════════════════
+    function getRoomId(user1, user2) {
+      return [user1, user2].sort().join('_');
+    }
+
+
+    // ═══════════════════════════════════════════════════
+    // HELPER: Format a timestamp nicely
+    // e.g. "14:32" instead of a raw date object
+    // ═══════════════════════════════════════════════════
+    function formatTime(dateString) {
+      const d = new Date(dateString);
+      const h = d.getHours().toString().padStart(2, '0');
+      const m = d.getMinutes().toString().padStart(2, '0');
+      return `${h}:${m}`;
+    }
+
+
+    // ═══════════════════════════════════════════════════
+    // HELPER: Add a message bubble to the chat window
+    //
+    // type = 'sent' (you sent it) or 'received' (they sent it)
+    // ═══════════════════════════════════════════════════
+    function appendMessage(sender, text, time, type) {
+      const messagesDiv = document.getElementById('messages');
+
+      const bubble = document.createElement('div');
+      bubble.classList.add('message', type);
+
+      bubble.innerHTML = `
+        <div>${text}</div>
+        <div class="meta">${type === 'received' ? sender + ' · ' : ''}${time}</div>
+      `;
+
+      messagesDiv.appendChild(bubble);
+
+      // Auto-scroll to the newest message
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+
+    // ═══════════════════════════════════════════════════
+    // HELPER: Add a grey system message (not a chat bubble)
+    // Used for things like "Now chatting with Bob"
+    // ═══════════════════════════════════════════════════
+    function appendSystemMessage(text) {
+      const messagesDiv = document.getElementById('messages');
+      const p = document.createElement('p');
+      p.classList.add('system-msg');
+      p.textContent = text;
+      messagesDiv.appendChild(p);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+
+    // ═══════════════════════════════════════════════════
+    // REGISTER
+    // Sends username + password to POST /auth/register
+    // ═══════════════════════════════════════════════════
+    async function register() {
+      const username = document.getElementById('username-input').value.trim();
+      const password = document.getElementById('password-input').value.trim();
+      const errorEl = document.getElementById('auth-error');
+
+      // Basic validation before even hitting the server
+      if (!username || !password) {
+        errorEl.textContent = 'Please enter a username and password.';
+        return;
+      }
+
+      try {
+        // fetch() sends an HTTP request from the browser
+        const res = await fetch('/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+          // JSON.stringify turns the JS object into a JSON string
+          // the server reads it with req.body (because of express.json())
+        });
+
+        const data = await res.json(); // parse the server's JSON response
+
+        if (!res.ok) {
+          // res.ok is true for 2xx status codes, false for 4xx/5xx
+          errorEl.textContent = data.error;
+          return;
+        }
+
+        // Success — tell the user they can now log in
+        errorEl.style.color = 'green';
+        errorEl.textContent = 'Account created! You can now log in.';
+
+      } catch (err) {
+        errorEl.textContent = 'Could not connect to server.';
+      }
+    }
+
+
+    // ═══════════════════════════════════════════════════
+    // LOGIN
+    // Sends credentials to POST /auth/login
+    // On success: saves token, switches to chat screen
+    // ═══════════════════════════════════════════════════
+    async function login() {
+      const username = document.getElementById('username-input').value.trim();
+      const password = document.getElementById('password-input').value.trim();
+      const errorEl = document.getElementById('auth-error');
+
+      if (!username || !password) {
+        errorEl.textContent = 'Please enter a username and password.';
+        return;
+      }
+
+      try {
+        const res = await fetch('/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          errorEl.style.color = 'red';
+          errorEl.textContent = data.error;
+          return;
+        }
+
+        // ── Login succeeded ──
+
+        // Save token and username to memory
+        // (in a real app you'd use localStorage, but memory is fine for now)
+        currentToken = data.token;
+        currentUser = data.username;
+
+        // Update the header to show who's logged in
+        document.getElementById('logged-in-as').textContent =
+          `Logged in as: ${currentUser}`;
+
+        // Switch screens: hide auth, show chat
+        document.getElementById('auth-screen').classList.add('hidden');
+        document.getElementById('chat-screen').classList.remove('hidden');
+
+      } catch (err) {
+        errorEl.textContent = 'Could not connect to server.';
+      }
+    }
+
+
+    // ═══════════════════════════════════════════════════
+    // LOGOUT
+    // Clears state and returns to the login screen
+    // ═══════════════════════════════════════════════════
+    function logout() {
+      currentUser = null;
+      currentToken = null;
+      currentRoom = null;
+      currentRecipient = null;
+
+      // Clear the message window and inputs
+      document.getElementById('messages').innerHTML = '';
+      document.getElementById('recipient-input').value = '';
+      document.getElementById('message-input').value = '';
+      document.getElementById('username-input').value = '';
+      document.getElementById('password-input').value = '';
+      document.getElementById('auth-error').textContent = '';
+      document.getElementById('auth-error').style.color = 'red';
+
+      // Switch back to login screen
+      document.getElementById('chat-screen').classList.add('hidden');
+      document.getElementById('auth-screen').classList.remove('hidden');
+    }
+
+
+    // ═══════════════════════════════════════════════════
+    // START CHAT
+    // Called when you click "Open Chat" after typing a recipient
+    // 1. Builds a room ID
+    // 2. Tells the server to put this socket in that room
+    // 3. Loads message history from the database
+    // ═══════════════════════════════════════════════════
+    async function startChat() {
+      const recipient = document.getElementById('recipient-input').value.trim();
+
+      if (!recipient) return;
+      if (recipient === currentUser) {
+        appendSystemMessage("You can't chat with yourself.");
+        return;
+      }
+
+      currentRecipient = recipient;
+      currentRoom = getRoomId(currentUser, recipient);
+
+      // Clear old messages from the screen
+      document.getElementById('messages').innerHTML = '';
+
+      // Tell the server: "add this socket to room X"
+      // The server's socket.on('join_room') handler receives this
+      socket.emit('join_room', currentRoom);
+
+      appendSystemMessage(`Now chatting with ${recipient}`);
+
+      // Load message history from the database
+      // GET /messages/alice/bob returns the last 50 messages between them
+      try {
+        const res = await fetch(`/messages/${currentUser}/${recipient}`);
+        const history = await res.json();
+
+        if (history.length === 0) {
+          appendSystemMessage('No messages yet. Say hello!');
+        } else {
+          // Render each historical message as a bubble
+          history.forEach(msg => {
+            const type = msg.sender === currentUser ? 'sent' : 'received';
+            appendMessage(msg.sender, msg.message, formatTime(msg.createdAt), type);
+          });
+        }
+      } catch (err) {
+        appendSystemMessage('Could not load message history.');
+      }
+    }
+
+
+    // ═══════════════════════════════════════════════════
+    // SEND MESSAGE
+    // Emits the message over Socket.IO to the server
+    // The server saves it and broadcasts it to the room
+    // ═══════════════════════════════════════════════════
+    function sendMessage() {
+      const input = document.getElementById('message-input');
+      const text = input.value.trim();
+
+      if (!text) return;         // don't send empty messages
+      if (!currentRoom) {        // must open a chat first
+        appendSystemMessage('Open a chat first by entering a username above.');
+        return;
+      }
+
+      // Emit the message to the server via Socket.IO
+      // The server's socket.on('send_message') handler receives this
+      socket.emit('send_message', {
+        sender: currentUser,
+        receiver: currentRecipient,
+        message: text,
+        room: currentRoom
+      });
+
+      // Clear the input box after sending
+      input.value = '';
+    }
+
+
+    // ═══════════════════════════════════════════════════
+    // RECEIVE MESSAGE (real-time)
+    // The server emits 'receive_message' to the room
+    // Both users' browsers receive this event
+    // ═══════════════════════════════════════════════════
+    socket.on('receive_message', (data) => {
+      // data = { sender, message, createdAt }
+
+      // Only show if we're in the right chat window
+      // (you might have multiple tabs open)
+      const type = data.sender === currentUser ? 'sent' : 'received';
+      appendMessage(data.sender, data.message, formatTime(data.createdAt), type);
+    });
+
+
+    // ═══════════════════════════════════════════════════
+    // SOCKET CONNECTION STATUS
+    // Just for debugging — prints to browser console
+    // Open DevTools (F12) → Console tab to see these
+    // ═══════════════════════════════════════════════════
+    socket.on('connect', () => {
+      console.log('Socket connected:', socket.id);
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Socket disconnected');
+    });
+
+  </script>
+</body>
+</html>
+
+

@@ -1,4 +1,4 @@
-require('dotenv').config(); // must be first — loads your .env file
+require('dotenv').config();
 
 const express = require('express');
 const http = require('http');
@@ -7,46 +7,50 @@ const mongoose = require('mongoose');
 const Message = require('./models/Message');
 const authRoutes = require('./routes/auth');
 
-// ─────────────────────────────────────────
-// APP SETUP
-// ─────────────────────────────────────────
 const app = express();
-
-// Socket.IO needs to attach to a raw http server, not just Express
 const server = http.createServer(app);
 const io = new Server(server);
 
 // ─────────────────────────────────────────
 // MIDDLEWARE
-// Code that runs on every request before hitting a route
 // ─────────────────────────────────────────
-app.use(express.json());        // lets us read JSON from request bodies
-app.use(express.static('public')); // serves public/index.html automatically
+app.use(express.json());
+app.use(express.static('public'));
 
 // ─────────────────────────────────────────
 // ROUTES
 // ─────────────────────────────────────────
-app.use('/auth', authRoutes);   // register and login routes
+app.use('/auth', authRoutes);
 
-// Health check — visit localhost:3000/ping to confirm server is running
 app.get('/ping', (req, res) => {
   res.send('Server is running!');
 });
 
-// Fetch message history between two users
-// Example: GET /messages/alice/bob
+// Fetch global chat history
+app.get('/messages/global', async (req, res) => {
+  try {
+    const messages = await Message.find({ isGlobal: true })
+      .sort({ createdAt: 1 })
+      .limit(100);  // last 100 global messages
+    res.json(messages);
+  } catch (err) {
+    res.status(500).json({ error: 'Could not fetch global messages' });
+  }
+});
+
+// Fetch private message history between two users
 app.get('/messages/:user1/:user2', async (req, res) => {
   const { user1, user2 } = req.params;
   try {
     const messages = await Message.find({
+      isGlobal: false,
       $or: [
         { sender: user1, receiver: user2 },
         { sender: user2, receiver: user1 }
       ]
     })
-    .sort({ createdAt: 1 }) // oldest first
+    .sort({ createdAt: 1 })
     .limit(50);
-
     res.json(messages);
   } catch (err) {
     res.status(500).json({ error: 'Could not fetch messages' });
@@ -54,34 +58,69 @@ app.get('/messages/:user1/:user2', async (req, res) => {
 });
 
 // ─────────────────────────────────────────
-// SOCKET.IO — REAL-TIME EVENTS
+// SOCKET.IO
 // ─────────────────────────────────────────
+
+// Track online users — a Set automatically ignores duplicates
+const onlineUsers = new Set();
+
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  // When a user opens a chat, they join a room
-  // A room is a private channel — only people in it receive its messages
-  // Room name is built from both usernames sorted alphabetically
-  // e.g. alice + bob = "alice_bob" regardless of who initiates
+  // ── USER COMES ONLINE ──
+  // Frontend sends this immediately after login
+  // We add them to the global room and broadcast the updated online list
+  socket.on('user_online', (username) => {
+    socket.username = username;       // store username on the socket for later
+    onlineUsers.add(username);
+    socket.join('global');            // auto-join the global room
+
+    // Tell everyone the online list updated
+    io.emit('online_users', Array.from(onlineUsers));
+    console.log(`${username} is online. Total: ${onlineUsers.size}`);
+  });
+
+  // ── JOIN PRIVATE ROOM ──
   socket.on('join_room', (roomId) => {
     socket.join(roomId);
     console.log(`${socket.id} joined room: ${roomId}`);
   });
 
-  // When a message is sent:
-  // 1. Save it to the database
-  // 2. Broadcast it to everyone in the room
+  // ── SEND GLOBAL MESSAGE ──
+  socket.on('send_global_message', async (data) => {
+    // data = { sender, message }
+    try {
+      const newMessage = new Message({
+        sender: data.sender,
+        message: data.message,
+        isGlobal: true
+      });
+      await newMessage.save();
+
+      // Emit to everyone in the global room
+      io.to('global').emit('receive_global_message', {
+        sender: data.sender,
+        message: data.message,
+        createdAt: newMessage.createdAt
+      });
+
+    } catch (err) {
+      console.error('Global message error:', err);
+    }
+  });
+
+  // ── SEND PRIVATE MESSAGE ──
   socket.on('send_message', async (data) => {
     // data = { sender, receiver, message, room }
     try {
       const newMessage = new Message({
         sender: data.sender,
         receiver: data.receiver,
-        message: data.message
+        message: data.message,
+        isGlobal: false
       });
       await newMessage.save();
 
-      // Emit to all sockets in the room (both users see it instantly)
       io.to(data.room).emit('receive_message', {
         sender: data.sender,
         message: data.message,
@@ -89,18 +128,23 @@ io.on('connection', (socket) => {
       });
 
     } catch (err) {
-      console.error('Message error:', err);
+      console.error('Private message error:', err);
     }
   });
 
+  // ── DISCONNECT ──
   socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
+    if (socket.username) {
+      onlineUsers.delete(socket.username);
+      // Tell everyone this user went offline
+      io.emit('online_users', Array.from(onlineUsers));
+      console.log(`${socket.username} went offline`);
+    }
   });
 });
 
 // ─────────────────────────────────────────
-// START SERVER
-// Connect to database first, then start listening
+// START
 // ─────────────────────────────────────────
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {

@@ -2,27 +2,45 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
 const User = require('../models/User');
 
 // ─────────────────────────────────────────
-// POST /auth/register
-// Creates a new user account
+// RATE LIMITER
+// Max 10 attempts per IP per 15 minutes
+// Applies to both login and register
 // ─────────────────────────────────────────
-router.post('/register', async (req, res) => {
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many attempts, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// ─────────────────────────────────────────
+// POST /auth/register
+// ─────────────────────────────────────────
+router.post('/register', authLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
 
-    // Reject if username already exists
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required' });
+    }
+    if (username.length > 30) {
+      return res.status(400).json({ error: 'Username must be 30 characters or less' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
     const existingUser = await User.findOne({ username });
     if (existingUser) {
       return res.status(400).json({ error: 'Username already taken' });
     }
 
-    // Hash the password before saving
-    // Never store plain text passwords — bcrypt scrambles it irreversibly
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Save new user to the database
     const user = new User({ username, password: hashedPassword });
     await user.save();
 
@@ -36,26 +54,27 @@ router.post('/register', async (req, res) => {
 
 // ─────────────────────────────────────────
 // POST /auth/login
-// Validates credentials and returns a token
 // ─────────────────────────────────────────
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, async (req, res) => {
   try {
     const { username, password } = req.body;
 
-    // Find user in database
-    const user = await User.findOne({ username });
-    if (!user) {
-      return res.status(400).json({ error: 'User not found' });
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required' });
     }
 
-    // Compare submitted password against stored hash
+    const user = await User.findOne({ username });
+
+    // Same vague message for both cases — prevents username enumeration
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid username or password' });
+    }
+
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(400).json({ error: 'Incorrect password' });
+      return res.status(400).json({ error: 'Invalid username or password' });
     }
 
-    // Create a JWT token — like a stamped ticket proving who you are
-    // The frontend stores this and sends it with future requests
     const token = jwt.sign(
       { id: user._id, username: user.username },
       process.env.JWT_SECRET,

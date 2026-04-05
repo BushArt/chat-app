@@ -11,6 +11,8 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+const MAX_MESSAGE_LENGTH = 1000;
+
 // ─────────────────────────────────────────
 // MIDDLEWARE
 // ─────────────────────────────────────────
@@ -26,19 +28,17 @@ app.get('/ping', (req, res) => {
   res.send('Server is running!');
 });
 
-// Fetch global chat history
 app.get('/messages/global', async (req, res) => {
   try {
     const messages = await Message.find({ isGlobal: true })
       .sort({ createdAt: 1 })
-      .limit(100);  // last 100 global messages
+      .limit(100);
     res.json(messages);
   } catch (err) {
     res.status(500).json({ error: 'Could not fetch global messages' });
   }
 });
 
-// Fetch private message history between two users
 app.get('/messages/:user1/:user2', async (req, res) => {
   const { user1, user2 } = req.params;
   try {
@@ -60,47 +60,50 @@ app.get('/messages/:user1/:user2', async (req, res) => {
 // ─────────────────────────────────────────
 // SOCKET.IO
 // ─────────────────────────────────────────
-
-// Track online users — a Set automatically ignores duplicates
 const onlineUsers = new Set();
 
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  // ── USER COMES ONLINE ──
-  // Frontend sends this immediately after login
-  // We add them to the global room and broadcast the updated online list
   socket.on('user_online', (username) => {
-    socket.username = username;       // store username on the socket for later
-    onlineUsers.add(username);
-    socket.join('global');            // auto-join the global room
+    // Validate username before trusting it
+    if (!username || typeof username !== 'string' || username.length > 30) return;
 
-    // Tell everyone the online list updated
+    socket.username = username;
+    onlineUsers.add(username);
+    socket.join('global');
+
     io.emit('online_users', Array.from(onlineUsers));
     console.log(`${username} is online. Total: ${onlineUsers.size}`);
   });
 
-  // ── JOIN PRIVATE ROOM ──
   socket.on('join_room', (roomId) => {
+    if (!roomId || typeof roomId !== 'string' || roomId.length > 100) return;
     socket.join(roomId);
     console.log(`${socket.id} joined room: ${roomId}`);
   });
 
-  // ── SEND GLOBAL MESSAGE ──
   socket.on('send_global_message', async (data) => {
-    // data = { sender, message }
+    // Use socket.username instead of trusting data.sender from the client
+    const sender = socket.username;
+    if (!sender) return;
+
+    const message = data?.message;
+    if (!message || typeof message !== 'string') return;
+    if (message.trim().length === 0) return;
+    if (message.length > MAX_MESSAGE_LENGTH) return;
+
     try {
       const newMessage = new Message({
-        sender: data.sender,
-        message: data.message,
+        sender,
+        message: message.trim(),
         isGlobal: true
       });
       await newMessage.save();
 
-      // Emit to everyone in the global room
       io.to('global').emit('receive_global_message', {
-        sender: data.sender,
-        message: data.message,
+        sender,
+        message: message.trim(),
         createdAt: newMessage.createdAt
       });
 
@@ -109,21 +112,33 @@ io.on('connection', (socket) => {
     }
   });
 
-  // ── SEND PRIVATE MESSAGE ──
   socket.on('send_message', async (data) => {
-    // data = { sender, receiver, message, room }
+    // Use socket.username instead of trusting data.sender from the client
+    const sender = socket.username;
+    if (!sender) return;
+
+    const message = data?.message;
+    const receiver = data?.receiver;
+    const room = data?.room;
+
+    if (!message || typeof message !== 'string') return;
+    if (message.trim().length === 0) return;
+    if (message.length > MAX_MESSAGE_LENGTH) return;
+    if (!receiver || typeof receiver !== 'string') return;
+    if (!room || typeof room !== 'string') return;
+
     try {
       const newMessage = new Message({
-        sender: data.sender,
-        receiver: data.receiver,
-        message: data.message,
+        sender,
+        receiver,
+        message: message.trim(),
         isGlobal: false
       });
       await newMessage.save();
 
-      io.to(data.room).emit('receive_message', {
-        sender: data.sender,
-        message: data.message,
+      io.to(room).emit('receive_message', {
+        sender,
+        message: message.trim(),
         createdAt: newMessage.createdAt
       });
 
@@ -132,11 +147,9 @@ io.on('connection', (socket) => {
     }
   });
 
-  // ── DISCONNECT ──
   socket.on('disconnect', () => {
     if (socket.username) {
       onlineUsers.delete(socket.username);
-      // Tell everyone this user went offline
       io.emit('online_users', Array.from(onlineUsers));
       console.log(`${socket.username} went offline`);
     }

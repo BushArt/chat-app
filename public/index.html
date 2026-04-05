@@ -518,6 +518,10 @@
         currentToken = data.token;
         currentUser  = data.username;
 
+        // Persist session so page refresh keeps you logged in
+        localStorage.setItem('chat_token', currentToken);
+        localStorage.setItem('chat_user', currentUser);
+
         document.getElementById('logged-in-as').textContent = `Logged in as: ${currentUser}`;
         document.getElementById('auth-screen').classList.add('hidden');
         document.getElementById('chat-screen').classList.remove('hidden');
@@ -532,6 +536,8 @@
     }
 
     function logout() {
+      localStorage.removeItem('chat_token');
+      localStorage.removeItem('chat_user');
       currentUser = currentToken = currentRoom = currentRecipient = null;
       ['global-messages','private-messages','online-list'].forEach(id => {
         document.getElementById(id).innerHTML = '';
@@ -633,6 +639,24 @@
     // ── CONNECTION ──
     socket.on('connect',    () => console.log('Socket connected:', socket.id));
     socket.on('disconnect', () => console.log('Socket disconnected'));
+
+    // ── AUTO-RESTORE SESSION ──
+    // If a token + username were saved from a previous session, skip the login screen
+    (function restoreSession() {
+      const savedToken = localStorage.getItem('chat_token');
+      const savedUser  = localStorage.getItem('chat_user');
+      if (!savedToken || !savedUser) return;
+
+      currentToken = savedToken;
+      currentUser  = savedUser;
+
+      document.getElementById('logged-in-as').textContent = `Logged in as: ${currentUser}`;
+      document.getElementById('auth-screen').classList.add('hidden');
+      document.getElementById('chat-screen').classList.remove('hidden');
+
+      socket.emit('user_online', currentUser);
+      loadGlobalHistory();
+    })();
   </script>
 </body>
 </html>

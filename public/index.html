@@ -428,10 +428,18 @@
       const container = document.getElementById(containerId);
       const bubble = document.createElement('div');
       bubble.classList.add('message', type);
-      bubble.innerHTML = `
-        <div>${text}</div>
-        <div class="meta">${type === 'received' ? sender + ' · ' : ''}${time}</div>
-      `;
+
+      // Use textContent instead of innerHTML to prevent XSS
+      // Never inject raw message text into innerHTML
+      const textDiv = document.createElement('div');
+      textDiv.textContent = text;
+
+      const metaDiv = document.createElement('div');
+      metaDiv.classList.add('meta');
+      metaDiv.textContent = (type === 'received' ? sender + ' · ' : '') + time;
+
+      bubble.appendChild(textDiv);
+      bubble.appendChild(metaDiv);
       container.appendChild(bubble);
       container.scrollTop = container.scrollHeight;
     }
@@ -470,8 +478,17 @@
       users.forEach(username => {
         const div = document.createElement('div');
         div.classList.add('online-user');
-        div.innerHTML = `<span class="online-dot"></span>${username}`;
-        // Clicking a name opens a private chat with them
+
+        // Use textContent to prevent XSS from malicious usernames
+        const dot = document.createElement('span');
+        dot.classList.add('online-dot');
+
+        const name = document.createElement('span');
+        name.textContent = username;
+
+        div.appendChild(dot);
+        div.appendChild(name);
+
         div.onclick = () => {
           if (username === currentUser) return;
           document.getElementById('recipient-input').value = username;

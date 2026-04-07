@@ -4,18 +4,27 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const mongoose = require('mongoose');
+const cors = require('cors');
 const Message = require('./models/Message');
 const authRoutes = require('./routes/auth');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: {
+    origin: process.env.CLIENT_ORIGIN || '*',
+    methods: ['GET', 'POST']
+  }
+});
 
 const MAX_MESSAGE_LENGTH = 1000;
 
 // ─────────────────────────────────────────
 // MIDDLEWARE
 // ─────────────────────────────────────────
+app.use(cors({
+  origin: process.env.CLIENT_ORIGIN || '*'
+}));
 app.use(express.json());
 app.use(express.static('public'));
 
@@ -62,11 +71,13 @@ app.get('/messages/:user1/:user2', async (req, res) => {
 // ─────────────────────────────────────────
 const onlineUsers = new Set();
 
+// Track typing timeouts so we can auto-clear if client disconnects
+const typingTimeouts = new Map(); // key: `${username}:${room}` -> timeout
+
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
   socket.on('user_online', (username) => {
-    // Validate username before trusting it
     if (!username || typeof username !== 'string' || username.length > 30) return;
 
     socket.username = username;
@@ -83,8 +94,37 @@ io.on('connection', (socket) => {
     console.log(`${socket.id} joined room: ${roomId}`);
   });
 
+  // ── TYPING INDICATORS ──
+  socket.on('start_typing', ({ room }) => {
+    const sender = socket.username;
+    if (!sender || !room || typeof room !== 'string') return;
+
+    const key = `${sender}:${room}`;
+
+    // Broadcast to the room (excluding sender)
+    socket.to(room).emit('user_typing', { username: sender, room });
+
+    // Auto-stop typing after 4 seconds in case client doesn't send stop_typing
+    clearTimeout(typingTimeouts.get(key));
+    typingTimeouts.set(key, setTimeout(() => {
+      socket.to(room).emit('user_stopped_typing', { username: sender, room });
+      typingTimeouts.delete(key);
+    }, 4000));
+  });
+
+  socket.on('stop_typing', ({ room }) => {
+    const sender = socket.username;
+    if (!sender || !room || typeof room !== 'string') return;
+
+    const key = `${sender}:${room}`;
+    clearTimeout(typingTimeouts.get(key));
+    typingTimeouts.delete(key);
+
+    socket.to(room).emit('user_stopped_typing', { username: sender, room });
+  });
+
+  // ── GLOBAL MESSAGE ──
   socket.on('send_global_message', async (data) => {
-    // Use socket.username instead of trusting data.sender from the client
     const sender = socket.username;
     if (!sender) return;
 
@@ -92,6 +132,12 @@ io.on('connection', (socket) => {
     if (!message || typeof message !== 'string') return;
     if (message.trim().length === 0) return;
     if (message.length > MAX_MESSAGE_LENGTH) return;
+
+    // Stop typing indicator when message is sent
+    const key = `${sender}:global`;
+    clearTimeout(typingTimeouts.get(key));
+    typingTimeouts.delete(key);
+    socket.to('global').emit('user_stopped_typing', { username: sender, room: 'global' });
 
     try {
       const newMessage = new Message({
@@ -112,8 +158,8 @@ io.on('connection', (socket) => {
     }
   });
 
+  // ── PRIVATE MESSAGE ──
   socket.on('send_message', async (data) => {
-    // Use socket.username instead of trusting data.sender from the client
     const sender = socket.username;
     if (!sender) return;
 
@@ -126,6 +172,12 @@ io.on('connection', (socket) => {
     if (message.length > MAX_MESSAGE_LENGTH) return;
     if (!receiver || typeof receiver !== 'string') return;
     if (!room || typeof room !== 'string') return;
+
+    // Stop typing indicator when message is sent
+    const key = `${sender}:${room}`;
+    clearTimeout(typingTimeouts.get(key));
+    typingTimeouts.delete(key);
+    socket.to(room).emit('user_stopped_typing', { username: sender, room });
 
     try {
       const newMessage = new Message({
@@ -152,6 +204,14 @@ io.on('connection', (socket) => {
       onlineUsers.delete(socket.username);
       io.emit('online_users', Array.from(onlineUsers));
       console.log(`${socket.username} went offline`);
+
+      // Clean up any lingering typing timeouts for this user
+      for (const [key, timeout] of typingTimeouts.entries()) {
+        if (key.startsWith(`${socket.username}:`)) {
+          clearTimeout(timeout);
+          typingTimeouts.delete(key);
+        }
+      }
     }
   });
 });

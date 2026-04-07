@@ -1,15 +1,15 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-Hant">
 <head>
   <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
   <title>Chat App</title>
   <script src="/socket.io/socket.io.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: Arial, sans-serif;
+      font-family: Arial, "PingFang TC", "Microsoft JhengHei", "Noto Sans CJK TC", sans-serif;
       background: #f0f2f5;
       height: 100vh;
       display: flex;
@@ -138,7 +138,6 @@
       padding: 8px 0;
     }
 
-    /* Each person in the online list */
     .online-user {
       padding: 8px 14px;
       font-size: 14px;
@@ -149,11 +148,12 @@
       gap: 8px;
       border-radius: 6px;
       margin: 0 6px;
+      -webkit-tap-highlight-color: transparent;
     }
 
     .online-user:hover { background: #e4e6eb; }
+    .online-user:active { background: #d8dadf; }
 
-    /* Green dot */
     .online-dot {
       width: 8px;
       height: 8px;
@@ -186,6 +186,7 @@
       color: #555;
       font-weight: bold;
       transition: all 0.15s;
+      -webkit-tap-highlight-color: transparent;
     }
 
     .tab:hover { color: #0084ff; }
@@ -221,6 +222,7 @@
       border-radius: 8px;
       font-size: 14px;
       outline: none;
+      font-family: inherit;
     }
 
     #recipient-bar button {
@@ -231,6 +233,7 @@
       border-radius: 8px;
       cursor: pointer;
       font-size: 14px;
+      white-space: nowrap;
     }
 
     /* ── MESSAGES ── */
@@ -248,8 +251,10 @@
       padding: 10px 14px;
       border-radius: 18px;
       font-size: 14px;
-      line-height: 1.4;
+      line-height: 1.5;
       word-wrap: break-word;
+      word-break: break-word;        /* prevents CJK text overflowing */
+      overflow-wrap: break-word;
     }
 
     .message.sent {
@@ -270,6 +275,8 @@
       font-size: 11px;
       margin-top: 4px;
       opacity: 0.7;
+      cursor: default;
+      user-select: none;
     }
 
     .system-msg {
@@ -279,25 +286,61 @@
       margin: 4px 0;
     }
 
+    /* ── TYPING INDICATOR ── */
+    .typing-indicator {
+      font-size: 12px;
+      color: #888;
+      padding: 2px 16px 6px;
+      min-height: 22px;
+      flex-shrink: 0;
+      font-style: italic;
+    }
+
     /* ── INPUT AREA ── */
     .input-area {
-      padding: 14px 16px;
+      padding: 10px 16px 14px;
       border-top: 1px solid #e4e6eb;
       display: flex;
       gap: 10px;
       flex-shrink: 0;
+      align-items: flex-end;
     }
 
-    .input-area input {
+    .input-wrapper {
       flex: 1;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .input-area textarea {
+      width: 100%;
       padding: 10px 16px;
       border: 1px solid #ddd;
-      border-radius: 24px;
+      border-radius: 20px;
       font-size: 14px;
       outline: none;
+      resize: none;
+      font-family: inherit;
+      line-height: 1.5;
+      min-height: 42px;
+      max-height: 120px;
+      overflow-y: auto;
+      display: block;
     }
 
-    .input-area input:focus { border-color: #0084ff; }
+    .input-area textarea:focus { border-color: #0084ff; }
+
+    .char-counter {
+      font-size: 11px;
+      color: #aaa;
+      text-align: right;
+      padding: 2px 4px 0;
+      height: 16px;
+    }
+
+    .char-counter.warn { color: #e67e22; }
+    .char-counter.danger { color: #e41e3f; }
 
     .input-area button {
       padding: 10px 20px;
@@ -308,6 +351,9 @@
       cursor: pointer;
       font-size: 14px;
       font-weight: bold;
+      flex-shrink: 0;
+      align-self: flex-end;
+      margin-bottom: 18px;  /* aligns with bottom of textarea when counter is shown */
     }
 
     /* Global chat badge on tab */
@@ -320,6 +366,26 @@
       margin-left: 6px;
       display: none;
     }
+
+    /* ── MOBILE TWEAKS ── */
+    @media (max-width: 600px) {
+      body { align-items: flex-start; }
+
+      #chat-screen {
+        height: 100vh;
+        border-radius: 0;
+        max-width: 100%;
+      }
+
+      #sidebar { width: 140px; }
+
+      .message { max-width: 80%; }
+
+      #auth-screen {
+        margin: 20px;
+        padding: 28px 20px;
+      }
+    }
   </style>
 </head>
 
@@ -328,10 +394,10 @@
   <!-- ── AUTH SCREEN ── -->
   <div id="auth-screen">
     <h1>💬 Chat App</h1>
-    <input type="text"     id="username-input" placeholder="Username"/>
-    <input type="password" id="password-input" placeholder="Password"/>
-    <button id="btn-login"    onclick="login()">Log In</button>
-    <button id="btn-register" onclick="register()">Create Account</button>
+    <input type="text"     id="username-input" placeholder="Username / 用戶名" autocomplete="username" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+    <input type="password" id="password-input" placeholder="Password / 密碼" autocomplete="current-password"/>
+    <button id="btn-login"    onclick="login()">Log In / 登入</button>
+    <button id="btn-register" onclick="register()">Create Account / 建立帳號</button>
     <p id="auth-error"></p>
   </div>
 
@@ -359,24 +425,27 @@
         <!-- Tabs -->
         <div id="tabs">
           <div class="tab active" id="tab-global" onclick="switchTab('global')">
-            🌐 Global Chat
+            🌐 Global
             <span id="global-tab-badge"></span>
           </div>
           <div class="tab" id="tab-private" onclick="switchTab('private')">
-            💬 Private Chat
+            💬 Private
           </div>
         </div>
 
         <!-- Global Chat Panel -->
         <div class="tab-panel" id="panel-global">
           <div class="messages" id="global-messages"></div>
+          <div class="typing-indicator" id="global-typing"></div>
           <div class="input-area">
-            <input
-              type="text"
-              id="global-input"
-              placeholder="Message everyone..."
-              onkeydown="if(event.key==='Enter') sendGlobalMessage()"
-            />
+            <div class="input-wrapper">
+              <textarea
+                id="global-input"
+                placeholder="Message everyone... / 向所有人發訊息..."
+                rows="1"
+              ></textarea>
+              <div class="char-counter" id="global-char-counter"></div>
+            </div>
             <button onclick="sendGlobalMessage()">Send</button>
           </div>
         </div>
@@ -384,18 +453,21 @@
         <!-- Private Chat Panel -->
         <div class="tab-panel hidden" id="panel-private">
           <div id="recipient-bar">
-            <span style="font-size:14px;color:#555;">Chat with:</span>
-            <input type="text" id="recipient-input" placeholder="Enter username..."/>
+            <span style="font-size:14px;color:#555;white-space:nowrap;">Chat with:</span>
+            <input type="text" id="recipient-input" placeholder="Enter username..." autocorrect="off" autocapitalize="off" spellcheck="false"/>
             <button onclick="startChat()">Open</button>
           </div>
           <div class="messages" id="private-messages"></div>
+          <div class="typing-indicator" id="private-typing"></div>
           <div class="input-area">
-            <input
-              type="text"
-              id="private-input"
-              placeholder="Type a message..."
-              onkeydown="if(event.key==='Enter') sendPrivateMessage()"
-            />
+            <div class="input-wrapper">
+              <textarea
+                id="private-input"
+                placeholder="Type a message... / 輸入訊息..."
+                rows="1"
+              ></textarea>
+              <div class="char-counter" id="private-char-counter"></div>
+            </div>
             <button onclick="sendPrivateMessage()">Send</button>
           </div>
         </div>
@@ -406,12 +478,14 @@
 
   <script>
     // ── STATE ──
-    let currentUser     = null;
-    let currentToken    = null;
-    let currentRoom     = null;
+    let currentUser      = null;
+    let currentToken     = null;
+    let currentRoom      = null;
     let currentRecipient = null;
-    let activeTab       = 'global';
-    let unreadGlobal    = 0;
+    let activeTab        = 'global';
+    let unreadGlobal     = 0;
+
+    const MAX_LEN = 1000;
 
     const socket = io();
 
@@ -424,24 +498,54 @@
              dt.getMinutes().toString().padStart(2,'0');
     }
 
+    // Relative time: "just now", "2 min ago", "3 hrs ago", etc.
+    function relativeTime(d) {
+      const diff = Math.floor((Date.now() - new Date(d)) / 1000);
+      if (diff < 60)       return 'just now';
+      if (diff < 3600)     return Math.floor(diff / 60) + ' min ago';
+      if (diff < 86400)    return Math.floor(diff / 3600) + ' hr ago';
+      return formatTime(d);
+    }
+
+    // Auto-resize a textarea to its content (up to max-height)
+    function autoResize(el) {
+      el.style.height = 'auto';
+      el.style.height = el.scrollHeight + 'px';
+    }
+
+    // ── SCROLL ──
+    // Only auto-scroll if user is already near the bottom (within 120px)
+    function maybeScrollToBottom(containerId) {
+      const el = document.getElementById(containerId);
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+      if (atBottom) el.scrollTop = el.scrollHeight;
+    }
+
+    function scrollToBottom(containerId) {
+      const el = document.getElementById(containerId);
+      el.scrollTop = el.scrollHeight;
+    }
+
+    // ── MESSAGES ──
     function appendMessage(containerId, sender, text, time, type) {
       const container = document.getElementById(containerId);
       const bubble = document.createElement('div');
       bubble.classList.add('message', type);
 
-      // Use textContent instead of innerHTML to prevent XSS
-      // Never inject raw message text into innerHTML
       const textDiv = document.createElement('div');
       textDiv.textContent = text;
 
       const metaDiv = document.createElement('div');
       metaDiv.classList.add('meta');
-      metaDiv.textContent = (type === 'received' ? sender + ' · ' : '') + time;
+      const rel = relativeTime(time);
+      const abs = formatTime(time);
+      metaDiv.textContent = (type === 'received' ? sender + ' · ' : '') + rel;
+      metaDiv.title = abs;  // show exact time on hover
 
       bubble.appendChild(textDiv);
       bubble.appendChild(metaDiv);
       container.appendChild(bubble);
-      container.scrollTop = container.scrollHeight;
+      maybeScrollToBottom(containerId);
     }
 
     function appendSystem(containerId, text) {
@@ -450,7 +554,59 @@
       p.classList.add('system-msg');
       p.textContent = text;
       container.appendChild(p);
-      container.scrollTop = container.scrollHeight;
+      scrollToBottom(containerId);
+    }
+
+    // ── CHAR COUNTER ──
+    function updateCharCounter(inputId, counterId) {
+      const text = document.getElementById(inputId).value;
+      const len = [...text].length; // count codepoints, not UTF-16 code units
+      const remaining = MAX_LEN - len;
+      const el = document.getElementById(counterId);
+      if (remaining <= MAX_LEN - 10) {  // only show when user has typed something
+        el.textContent = remaining + ' left';
+        el.className = 'char-counter' +
+          (remaining <= 50 ? ' danger' : remaining <= 200 ? ' warn' : '');
+      } else {
+        el.textContent = '';
+        el.className = 'char-counter';
+      }
+    }
+
+    // ── TYPING INDICATOR ──
+    const typingState = { global: new Set(), private: new Set() };
+
+    function showTyping(tab, username) {
+      typingState[tab].add(username);
+      renderTyping(tab);
+    }
+
+    function hideTyping(tab, username) {
+      typingState[tab].delete(username);
+      renderTyping(tab);
+    }
+
+    function renderTyping(tab) {
+      const el = document.getElementById(tab + '-typing');
+      const users = Array.from(typingState[tab]);
+      if (users.length === 0) {
+        el.textContent = '';
+      } else if (users.length === 1) {
+        el.textContent = users[0] + ' is typing…';
+      } else {
+        el.textContent = users.slice(0, 2).join(', ') + ' are typing…';
+      }
+    }
+
+    // Emit typing events with debounce
+    const typingTimers = {};
+
+    function handleTyping(room, stopFn) {
+      socket.emit('start_typing', { room });
+      clearTimeout(typingTimers[room]);
+      typingTimers[room] = setTimeout(() => {
+        socket.emit('stop_typing', { room });
+      }, 3000);
     }
 
     // ── TABS ──
@@ -462,7 +618,6 @@
       document.getElementById('tab-global').classList.toggle('active', tab === 'global');
       document.getElementById('tab-private').classList.toggle('active', tab === 'private');
 
-      // Clear unread badge when switching to global
       if (tab === 'global') {
         unreadGlobal = 0;
         const badge = document.getElementById('global-tab-badge');
@@ -479,7 +634,6 @@
         const div = document.createElement('div');
         div.classList.add('online-user');
 
-        // Use textContent to prevent XSS from malicious usernames
         const dot = document.createElement('span');
         dot.classList.add('online-dot');
 
@@ -514,7 +668,7 @@
         const data = await res.json();
         if (!res.ok) { errorEl.textContent = data.error; return; }
         errorEl.style.color = 'green';
-        errorEl.textContent = 'Account created! You can now log in.';
+        errorEl.textContent = data.message;
       } catch { errorEl.textContent = 'Could not connect to server.'; }
     }
 
@@ -535,7 +689,6 @@
         currentToken = data.token;
         currentUser  = data.username;
 
-        // Persist session so page refresh keeps you logged in
         localStorage.setItem('chat_token', currentToken);
         localStorage.setItem('chat_user', currentUser);
 
@@ -543,10 +696,7 @@
         document.getElementById('auth-screen').classList.add('hidden');
         document.getElementById('chat-screen').classList.remove('hidden');
 
-        // Tell server this user is online — triggers join to global room
         socket.emit('user_online', currentUser);
-
-        // Load global chat history
         loadGlobalHistory();
 
       } catch { errorEl.textContent = 'Could not connect to server.'; }
@@ -559,11 +709,13 @@
       ['global-messages','private-messages','online-list'].forEach(id => {
         document.getElementById(id).innerHTML = '';
       });
-      document.getElementById('recipient-input').value   = '';
-      document.getElementById('username-input').value    = '';
-      document.getElementById('password-input').value    = '';
-      document.getElementById('auth-error').textContent  = '';
-      document.getElementById('auth-error').style.color  = 'red';
+      document.getElementById('global-typing').textContent  = '';
+      document.getElementById('private-typing').textContent = '';
+      document.getElementById('recipient-input').value  = '';
+      document.getElementById('username-input').value   = '';
+      document.getElementById('password-input').value   = '';
+      document.getElementById('auth-error').textContent = '';
+      document.getElementById('auth-error').style.color = 'red';
       switchTab('global');
       document.getElementById('chat-screen').classList.add('hidden');
       document.getElementById('auth-screen').classList.remove('hidden');
@@ -572,33 +724,37 @@
     // ── GLOBAL CHAT ──
     async function loadGlobalHistory() {
       try {
-        const res      = await fetch('/messages/global');
-        const history  = await res.json();
+        const res     = await fetch('/messages/global');
+        const history = await res.json();
         if (history.length === 0) {
           appendSystem('global-messages', 'Welcome to Global Chat! Say hello 👋');
         } else {
           history.forEach(msg => {
             const type = msg.sender === currentUser ? 'sent' : 'received';
-            appendMessage('global-messages', msg.sender, msg.message, formatTime(msg.createdAt), type);
+            appendMessage('global-messages', msg.sender, msg.message, msg.createdAt, type);
           });
+          scrollToBottom('global-messages');
         }
       } catch { appendSystem('global-messages', 'Could not load history.'); }
     }
 
     function sendGlobalMessage() {
-      const input = document.getElementById('global-input');
-      const text  = input.value.trim();
+      const textarea = document.getElementById('global-input');
+      const text = textarea.value.trim();
       if (!text) return;
+      if ([...text].length > MAX_LEN) return;
       socket.emit('send_global_message', { sender: currentUser, message: text });
-      input.value = '';
+      socket.emit('stop_typing', { room: 'global' });
+      clearTimeout(typingTimers['global']);
+      textarea.value = '';
+      autoResize(textarea);
+      updateCharCounter('global-input', 'global-char-counter');
     }
 
-    // Receive global messages in real time
     socket.on('receive_global_message', (data) => {
       const type = data.sender === currentUser ? 'sent' : 'received';
-      appendMessage('global-messages', data.sender, data.message, formatTime(data.createdAt), type);
+      appendMessage('global-messages', data.sender, data.message, data.createdAt, type);
 
-      // If user is on private tab, show unread badge on Global tab
       if (activeTab !== 'global' && data.sender !== currentUser) {
         unreadGlobal++;
         const badge = document.getElementById('global-tab-badge');
@@ -616,6 +772,8 @@
       currentRoom      = getRoomId(currentUser, recipient);
 
       document.getElementById('private-messages').innerHTML = '';
+      typingState.private.clear();
+      renderTyping('private');
       socket.emit('join_room', currentRoom);
       appendSystem('private-messages', `Now chatting with ${recipient}`);
 
@@ -627,27 +785,45 @@
         } else {
           history.forEach(msg => {
             const type = msg.sender === currentUser ? 'sent' : 'received';
-            appendMessage('private-messages', msg.sender, msg.message, formatTime(msg.createdAt), type);
+            appendMessage('private-messages', msg.sender, msg.message, msg.createdAt, type);
           });
+          scrollToBottom('private-messages');
         }
       } catch { appendSystem('private-messages', 'Could not load history.'); }
     }
 
     function sendPrivateMessage() {
-      const input = document.getElementById('private-input');
-      const text  = input.value.trim();
+      const textarea = document.getElementById('private-input');
+      const text = textarea.value.trim();
       if (!text) return;
+      if ([...text].length > MAX_LEN) return;
       if (!currentRoom) { appendSystem('private-messages', 'Open a chat first.'); return; }
       socket.emit('send_message', {
         sender: currentUser, receiver: currentRecipient,
         message: text, room: currentRoom
       });
-      input.value = '';
+      socket.emit('stop_typing', { room: currentRoom });
+      clearTimeout(typingTimers[currentRoom]);
+      textarea.value = '';
+      autoResize(textarea);
+      updateCharCounter('private-input', 'private-char-counter');
     }
 
     socket.on('receive_message', (data) => {
       const type = data.sender === currentUser ? 'sent' : 'received';
-      appendMessage('private-messages', data.sender, data.message, formatTime(data.createdAt), type);
+      appendMessage('private-messages', data.sender, data.message, data.createdAt, type);
+    });
+
+    // ── TYPING EVENTS FROM SERVER ──
+    socket.on('user_typing', ({ username, room }) => {
+      if (username === currentUser) return;
+      if (room === 'global') showTyping('global', username);
+      else if (room === currentRoom) showTyping('private', username);
+    });
+
+    socket.on('user_stopped_typing', ({ username, room }) => {
+      if (room === 'global') hideTyping('global', username);
+      else hideTyping('private', username);
     });
 
     // ── ONLINE USERS ──
@@ -657,8 +833,40 @@
     socket.on('connect',    () => console.log('Socket connected:', socket.id));
     socket.on('disconnect', () => console.log('Socket disconnected'));
 
+    // ── TEXTAREA EVENT SETUP ──
+    // IME-safe: track composition state so Enter during Chinese input
+    // (e.g. pinyin candidate selection) does NOT send the message.
+    function setupTextarea(textareaId, counterId, sendFn, room) {
+      const textarea = document.getElementById(textareaId);
+      let isComposing = false;
+
+      textarea.addEventListener('compositionstart', () => { isComposing = true; });
+      textarea.addEventListener('compositionend',   () => { isComposing = false; });
+
+      textarea.addEventListener('input', () => {
+        autoResize(textarea);
+        updateCharCounter(textareaId, counterId);
+        // Only emit typing events when there is text and user has logged in
+        if (currentUser && textarea.value.trim().length > 0) {
+          const r = textareaId === 'global-input' ? 'global' : currentRoom;
+          if (r) handleTyping(r);
+        }
+      });
+
+      textarea.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          if (isComposing) return;   // Mid-IME: let the composition finish
+          e.preventDefault();
+          sendFn();
+        }
+        // Shift+Enter: default behaviour = newline (textarea handles it natively)
+      });
+    }
+
+    setupTextarea('global-input',  'global-char-counter',  sendGlobalMessage,  'global');
+    setupTextarea('private-input', 'private-char-counter', sendPrivateMessage, null);
+
     // ── AUTO-RESTORE SESSION ──
-    // If a token + username were saved from a previous session, skip the login screen
     (function restoreSession() {
       const savedToken = localStorage.getItem('chat_token');
       const savedUser  = localStorage.getItem('chat_user');

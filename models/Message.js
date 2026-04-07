@@ -21,4 +21,11 @@ const messageSchema = new mongoose.Schema({
   timestamps: true
 });
 
+// Index for fast global chat history lookups
+messageSchema.index({ isGlobal: 1, createdAt: 1 });
+
+// Compound index for fast DM history lookups
+// Covers queries like: sender=A,receiver=B  OR  sender=B,receiver=A
+messageSchema.index({ sender: 1, receiver: 1, createdAt: 1 });
+
 module.exports = mongoose.model('Message', messageSchema);

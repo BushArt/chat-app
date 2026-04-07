@@ -19,6 +19,29 @@ const authLimiter = rateLimit({
 });
 
 // ─────────────────────────────────────────
+// USERNAME VALIDATION
+// Allows: Latin letters, digits, underscores,
+// hyphens, Chinese (Simplified + Traditional),
+// Japanese (Hiragana, Katakana, Kanji),
+// Korean (Hangul), and other CJK unified ideographs.
+// No whitespace or special characters allowed.
+// Must be 1–30 characters (codepoints, not bytes).
+// ─────────────────────────────────────────
+function isValidUsername(username) {
+  if (typeof username !== 'string') return false;
+
+  // Count Unicode code points (handles emoji / surrogate pairs correctly)
+  const codePoints = [...username].length;
+  if (codePoints < 1 || codePoints > 30) return false;
+
+  // Allow: word characters (Latin/digits/_), hyphens,
+  // and any CJK / Hangul / Hiragana / Katakana blocks.
+  // Disallow: whitespace, control chars, and everything else.
+  const allowed = /^[\w\-\u3000-\u9FFF\uA000-\uA4FF\uAC00-\uD7FF\uF900-\uFAFF\u2E80-\u2EFF\u31F0-\u31FF\u3040-\u30FF]+$/u;
+  return allowed.test(username);
+}
+
+// ─────────────────────────────────────────
 // POST /auth/register
 // ─────────────────────────────────────────
 router.post('/register', authLimiter, async (req, res) => {
@@ -28,9 +51,13 @@ router.post('/register', authLimiter, async (req, res) => {
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password are required' });
     }
-    if (username.length > 30) {
-      return res.status(400).json({ error: 'Username must be 30 characters or less' });
+
+    if (!isValidUsername(username)) {
+      return res.status(400).json({
+        error: 'Username must be 1–30 characters and may only contain letters, numbers, underscores, hyphens, or Chinese/Japanese/Korean characters.'
+      });
     }
+
     if (password.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }

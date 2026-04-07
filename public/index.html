@@ -1,6 +1,13 @@
 <!DOCTYPE html>
-<html lang="en">
+<!-- lang="zh" tells the browser to expect CJK text, which improves
+     IME (Input Method Editor) behaviour, font selection, and
+     line-breaking for users typing in Chinese. -->
+<html lang="zh-Hans">
 <head>
+  <!-- charset MUST be the very first tag inside <head> so the browser
+       knows how to decode the rest of the document before parsing anything.
+       UTF-8 supports every Chinese, Japanese, Korean, Arabic, etc. character
+       as well as all emoji. -->
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Chat App</title>
@@ -9,7 +16,15 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: Arial, sans-serif;
+      /* System font stack that prioritises CJK-aware fonts on every OS:
+         - Windows: Microsoft YaHei (Simplified Chinese)
+         - macOS/iOS: PingFang SC
+         - Android: Noto Sans CJK
+         Falls back to a generic sans-serif on any other platform. */
+      font-family:
+        'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC',
+        'Hiragino Sans GB', 'WenQuanYi Micro Hei',
+        Arial, sans-serif;
       background: #f0f2f5;
       height: 100vh;
       display: flex;
@@ -42,7 +57,12 @@
       border: 1px solid #ddd;
       border-radius: 8px;
       font-size: 15px;
+      /* Same font stack as body so Chinese input appears correctly */
+      font-family: inherit;
       outline: none;
+      /* ime-mode is non-standard but still widely honoured on Windows.
+         'active' tells Windows to open the IME automatically for text fields. */
+      ime-mode: active;
     }
 
     #auth-screen input:focus { border-color: #0084ff; }
@@ -56,9 +76,10 @@
       font-size: 15px;
       cursor: pointer;
       font-weight: bold;
+      font-family: inherit;
     }
 
-    #btn-login { background: #0084ff; color: white; }
+    #btn-login    { background: #0084ff; color: white; }
     #btn-register { background: #e4e6eb; color: #111; }
 
     #auth-error {
@@ -67,6 +88,8 @@
       text-align: center;
       margin-top: 8px;
       min-height: 18px;
+      /* Allow long CJK error messages to wrap naturally */
+      word-break: break-word;
     }
 
     /* ── CHAT SCREEN ── */
@@ -93,7 +116,14 @@
       flex-shrink: 0;
     }
 
-    #chat-header span { font-size: 15px; }
+    #chat-header span {
+      font-size: 15px;
+      /* Prevent very long CJK usernames from pushing the logout button off-screen */
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 60%;
+    }
 
     #chat-header button {
       background: rgba(255,255,255,0.2);
@@ -103,6 +133,8 @@
       border-radius: 6px;
       cursor: pointer;
       font-size: 13px;
+      font-family: inherit;
+      flex-shrink: 0;
     }
 
     /* ── MAIN LAYOUT: sidebar + chat area ── */
@@ -138,7 +170,6 @@
       padding: 8px 0;
     }
 
-    /* Each person in the online list */
     .online-user {
       padding: 8px 14px;
       font-size: 14px;
@@ -149,11 +180,12 @@
       gap: 8px;
       border-radius: 6px;
       margin: 0 6px;
+      /* CJK names should not be truncated with ellipsis — wrap instead */
+      word-break: break-all;
     }
 
     .online-user:hover { background: #e4e6eb; }
 
-    /* Green dot */
     .online-dot {
       width: 8px;
       height: 8px;
@@ -220,7 +252,9 @@
       border: 1px solid #ddd;
       border-radius: 8px;
       font-size: 14px;
+      font-family: inherit;
       outline: none;
+      ime-mode: active;
     }
 
     #recipient-bar button {
@@ -231,6 +265,8 @@
       border-radius: 8px;
       cursor: pointer;
       font-size: 14px;
+      font-family: inherit;
+      flex-shrink: 0;
     }
 
     /* ── MESSAGES ── */
@@ -248,8 +284,11 @@
       padding: 10px 14px;
       border-radius: 18px;
       font-size: 14px;
-      line-height: 1.4;
-      word-wrap: break-word;
+      line-height: 1.6;      /* slightly more than 1.4 — CJK glyphs need space */
+      /* break-all ensures Chinese text (which has no spaces) wraps inside
+         the bubble instead of overflowing it */
+      word-break: break-all;
+      overflow-wrap: break-word;
     }
 
     .message.sent {
@@ -277,7 +316,19 @@
       font-size: 12px;
       color: #999;
       margin: 4px 0;
+      word-break: break-word;
     }
+
+    /* ── CHAR COUNTER ── */
+    .char-counter {
+      font-size: 11px;
+      color: #999;
+      text-align: right;
+      padding: 0 16px 4px;
+      flex-shrink: 0;
+    }
+    .char-counter.warn  { color: #e8a000; }
+    .char-counter.limit { color: #e41e3f; }
 
     /* ── INPUT AREA ── */
     .input-area {
@@ -294,7 +345,12 @@
       border: 1px solid #ddd;
       border-radius: 24px;
       font-size: 14px;
+      font-family: inherit;
       outline: none;
+      /* ime-mode: active tells the OS to keep the IME open while the user
+         is typing in this field.  This prevents the frustrating behaviour
+         where an IME (pinyin, wubi, etc.) closes mid-sentence. */
+      ime-mode: active;
     }
 
     .input-area input:focus { border-color: #0084ff; }
@@ -308,6 +364,8 @@
       cursor: pointer;
       font-size: 14px;
       font-weight: bold;
+      font-family: inherit;
+      flex-shrink: 0;
     }
 
     /* Global chat badge on tab */
@@ -328,10 +386,13 @@
   <!-- ── AUTH SCREEN ── -->
   <div id="auth-screen">
     <h1>💬 Chat App</h1>
-    <input type="text"     id="username-input" placeholder="Username"/>
-    <input type="password" id="password-input" placeholder="Password"/>
-    <button id="btn-login"    onclick="login()">Log In</button>
-    <button id="btn-register" onclick="register()">Create Account</button>
+    <!-- maxlength matches server-side USERNAME_MAX (32 characters).
+         For Chinese usernames one character = one maxlength unit, which
+         is what we want. -->
+    <input type="text"     id="username-input" placeholder="用户名 / Username" maxlength="32"/>
+    <input type="password" id="password-input" placeholder="密码 / Password"  maxlength="128" autocomplete="current-password"/>
+    <button id="btn-login"    onclick="login()">登录 / Log In</button>
+    <button id="btn-register" onclick="register()">注册 / Create Account</button>
     <p id="auth-error"></p>
   </div>
 
@@ -340,8 +401,8 @@
 
     <!-- Header -->
     <div id="chat-header">
-      <span id="logged-in-as">Logged in as: </span>
-      <button onclick="logout()">Log Out</button>
+      <span id="logged-in-as">已登录 / Logged in as: </span>
+      <button onclick="logout()">退出 / Log Out</button>
     </div>
 
     <!-- Main layout: sidebar + chat area -->
@@ -370,14 +431,18 @@
         <!-- Global Chat Panel -->
         <div class="tab-panel" id="panel-global">
           <div class="messages" id="global-messages"></div>
+          <div class="char-counter" id="global-counter"></div>
           <div class="input-area">
             <input
               type="text"
               id="global-input"
-              placeholder="Message everyone..."
-              onkeydown="if(event.key==='Enter') sendGlobalMessage()"
+              placeholder="发送消息… / Message everyone…"
+              maxlength="2000"
+              autocomplete="off"
+              oninput="updateCounter('global')"
+              onkeydown="handleGlobalKey(event)"
             />
-            <button onclick="sendGlobalMessage()">Send</button>
+            <button onclick="sendGlobalMessage()">发送 / Send</button>
           </div>
         </div>
 
@@ -385,18 +450,22 @@
         <div class="tab-panel hidden" id="panel-private">
           <div id="recipient-bar">
             <span style="font-size:14px;color:#555;">Chat with:</span>
-            <input type="text" id="recipient-input" placeholder="Enter username..."/>
+            <input type="text" id="recipient-input" placeholder="用户名 / Username" maxlength="32"/>
             <button onclick="startChat()">Open</button>
           </div>
           <div class="messages" id="private-messages"></div>
+          <div class="char-counter" id="private-counter"></div>
           <div class="input-area">
             <input
               type="text"
               id="private-input"
-              placeholder="Type a message..."
-              onkeydown="if(event.key==='Enter') sendPrivateMessage()"
+              placeholder="发送消息… / Type a message…"
+              maxlength="2000"
+              autocomplete="off"
+              oninput="updateCounter('private')"
+              onkeydown="handlePrivateKey(event)"
             />
-            <button onclick="sendPrivateMessage()">Send</button>
+            <button onclick="sendPrivateMessage()">发送 / Send</button>
           </div>
         </div>
 
@@ -406,32 +475,47 @@
 
   <script>
     // ── STATE ──
-    let currentUser     = null;
-    let currentToken    = null;
-    let currentRoom     = null;
+    let currentUser      = null;
+    let currentToken     = null;
+    let currentRoom      = null;
     let currentRecipient = null;
-    let activeTab       = 'global';
-    let unreadGlobal    = 0;
+    let activeTab        = 'global';
+    let unreadGlobal     = 0;
 
-    const socket = io();
+    // ── SOCKET ──
+    // Socket is created without auth initially; we reconnect with the
+    // JWT token after login so the server can verify the handshake.
+    let socket = null;
+
+    const MAX_LENGTH = 2000;
 
     // ── HELPERS ──
     function getRoomId(a, b) { return [a, b].sort().join('_'); }
 
     function formatTime(d) {
       const dt = new Date(d);
-      return dt.getHours().toString().padStart(2,'0') + ':' +
-             dt.getMinutes().toString().padStart(2,'0');
+      return dt.getHours().toString().padStart(2, '0') + ':' +
+             dt.getMinutes().toString().padStart(2, '0');
     }
 
+    // Render a chat bubble.
+    // We use textContent (not innerHTML) for the message body so that
+    // any HTML that slipped through is displayed as literal text, not
+    // executed. The server also escapes < and > as a second layer of defence.
     function appendMessage(containerId, sender, text, time, type) {
       const container = document.getElementById(containerId);
       const bubble = document.createElement('div');
       bubble.classList.add('message', type);
-      bubble.innerHTML = `
-        <div>${text}</div>
-        <div class="meta">${type === 'received' ? sender + ' · ' : ''}${time}</div>
-      `;
+
+      const body = document.createElement('div');
+      body.textContent = text;  // safe: no innerHTML
+
+      const meta = document.createElement('div');
+      meta.classList.add('meta');
+      meta.textContent = (type === 'received' ? sender + ' · ' : '') + time;
+
+      bubble.appendChild(body);
+      bubble.appendChild(meta);
       container.appendChild(bubble);
       container.scrollTop = container.scrollHeight;
     }
@@ -445,16 +529,43 @@
       container.scrollTop = container.scrollHeight;
     }
 
+    // ── CHARACTER COUNTER ──
+    // Counts Unicode code points (characters), not bytes, so Chinese
+    // users see the same remaining count as English users per character typed.
+    function updateCounter(tab) {
+      const inputId   = tab === 'global' ? 'global-input' : 'private-input';
+      const counterId = tab === 'global' ? 'global-counter' : 'private-counter';
+      const input   = document.getElementById(inputId);
+      const counter = document.getElementById(counterId);
+      const len = [...input.value].length;  // spread into array → code points, not UTF-16 code units
+      const remaining = MAX_LENGTH - len;
+      counter.textContent = remaining < MAX_LENGTH ? `${remaining} remaining` : '';
+      counter.className = 'char-counter' +
+        (remaining <= 0 ? ' limit' : remaining <= 200 ? ' warn' : '');
+    }
+
+    // ── KEYBOARD HANDLERS ──
+    // We cannot simply use onkeydown="if(event.key==='Enter') send()"
+    // because on Chinese IMEs the Enter key is used to *confirm* a
+    // character selection from the candidate list — pressing Enter during
+    // IME composition must NOT send the message.
+    // The isComposing flag is set to true while an IME is composing text.
+    function handleGlobalKey(event) {
+      if (event.key === 'Enter' && !event.isComposing) sendGlobalMessage();
+    }
+
+    function handlePrivateKey(event) {
+      if (event.key === 'Enter' && !event.isComposing) sendPrivateMessage();
+    }
+
     // ── TABS ──
     function switchTab(tab) {
       activeTab = tab;
-
       document.getElementById('panel-global').classList.toggle('hidden', tab !== 'global');
       document.getElementById('panel-private').classList.toggle('hidden', tab !== 'private');
       document.getElementById('tab-global').classList.toggle('active', tab === 'global');
       document.getElementById('tab-private').classList.toggle('active', tab === 'private');
 
-      // Clear unread badge when switching to global
       if (tab === 'global') {
         unreadGlobal = 0;
         const badge = document.getElementById('global-tab-badge');
@@ -470,8 +581,16 @@
       users.forEach(username => {
         const div = document.createElement('div');
         div.classList.add('online-user');
-        div.innerHTML = `<span class="online-dot"></span>${username}`;
-        // Clicking a name opens a private chat with them
+
+        const dot = document.createElement('span');
+        dot.classList.add('online-dot');
+
+        const name = document.createElement('span');
+        name.textContent = username;  // textContent — safe for any script
+
+        div.appendChild(dot);
+        div.appendChild(name);
+
         div.onclick = () => {
           if (username === currentUser) return;
           document.getElementById('recipient-input').value = username;
@@ -485,72 +604,141 @@
     // ── AUTH ──
     async function register() {
       const username = document.getElementById('username-input').value.trim();
-      const password = document.getElementById('password-input').value.trim();
+      const password = document.getElementById('password-input').value;
       const errorEl  = document.getElementById('auth-error');
-      if (!username || !password) { errorEl.textContent = 'Please fill in both fields.'; return; }
+      errorEl.style.color = 'red';
+      if (!username || !password) { errorEl.textContent = '请填写所有字段 / Please fill in both fields.'; return; }
       try {
         const res  = await fetch('/auth/register', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
           body: JSON.stringify({ username, password })
         });
         const data = await res.json();
         if (!res.ok) { errorEl.textContent = data.error; return; }
         errorEl.style.color = 'green';
-        errorEl.textContent = 'Account created! You can now log in.';
-      } catch { errorEl.textContent = 'Could not connect to server.'; }
+        errorEl.textContent = '账号已创建！/ Account created! You can now log in.';
+      } catch { errorEl.textContent = '无法连接服务器 / Could not connect to server.'; }
     }
 
     async function login() {
       const username = document.getElementById('username-input').value.trim();
-      const password = document.getElementById('password-input').value.trim();
+      const password = document.getElementById('password-input').value;
       const errorEl  = document.getElementById('auth-error');
-      if (!username || !password) { errorEl.textContent = 'Please fill in both fields.'; return; }
+      errorEl.style.color = 'red';
+      if (!username || !password) { errorEl.textContent = '请填写所有字段 / Please fill in both fields.'; return; }
       try {
         const res  = await fetch('/auth/login', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
           body: JSON.stringify({ username, password })
         });
         const data = await res.json();
-        if (!res.ok) { errorEl.style.color = 'red'; errorEl.textContent = data.error; return; }
+        if (!res.ok) { errorEl.textContent = data.error; return; }
 
         currentToken = data.token;
         currentUser  = data.username;
 
-        document.getElementById('logged-in-as').textContent = `Logged in as: ${currentUser}`;
+        document.getElementById('logged-in-as').textContent = `已登录为 / Logged in as: ${currentUser}`;
         document.getElementById('auth-screen').classList.add('hidden');
         document.getElementById('chat-screen').classList.remove('hidden');
 
-        // Tell server this user is online — triggers join to global room
-        socket.emit('user_online', currentUser);
+        // Connect socket WITH the JWT token so the server can verify
+        // the handshake before allowing any events.
+        connectSocket();
 
-        // Load global chat history
+        // Load global chat history (now sends the Bearer token)
         loadGlobalHistory();
 
-      } catch { errorEl.textContent = 'Could not connect to server.'; }
+      } catch { errorEl.textContent = '无法连接服务器 / Could not connect to server.'; }
     }
 
     function logout() {
+      if (socket) {
+        socket.disconnect();
+        socket = null;
+      }
       currentUser = currentToken = currentRoom = currentRecipient = null;
-      ['global-messages','private-messages','online-list'].forEach(id => {
+      unreadGlobal = 0;
+      ['global-messages', 'private-messages', 'online-list'].forEach(id => {
         document.getElementById(id).innerHTML = '';
       });
-      document.getElementById('recipient-input').value   = '';
-      document.getElementById('username-input').value    = '';
-      document.getElementById('password-input').value    = '';
-      document.getElementById('auth-error').textContent  = '';
-      document.getElementById('auth-error').style.color  = 'red';
+      ['global-counter', 'private-counter'].forEach(id => {
+        document.getElementById(id).textContent = '';
+      });
+      document.getElementById('recipient-input').value  = '';
+      document.getElementById('username-input').value   = '';
+      document.getElementById('password-input').value   = '';
+      document.getElementById('global-input').value     = '';
+      document.getElementById('private-input').value    = '';
+      document.getElementById('auth-error').textContent = '';
+      document.getElementById('auth-error').style.color = 'red';
       switchTab('global');
       document.getElementById('chat-screen').classList.add('hidden');
       document.getElementById('auth-screen').classList.remove('hidden');
     }
 
+    // ── SOCKET CONNECTION ──
+    function connectSocket() {
+      // Pass the JWT in the auth object.  Socket.IO sends this during
+      // the handshake so the server's io.use() middleware can verify it
+      // before the connection is fully established.
+      socket = io({
+        auth: { token: currentToken }
+      });
+
+      socket.on('connect', () => {
+        console.log('Socket connected:', socket.id);
+        // user_online is now a no-op on the server (we rely on the JWT),
+        // but we still emit it for compatibility in case you roll back.
+        socket.emit('user_online', currentUser);
+      });
+
+      socket.on('connect_error', (err) => {
+        console.error('Socket connection error:', err.message);
+        // If auth fails, show the error and log the user out
+        if (err.message.includes('Authentication') || err.message.includes('token')) {
+          const errorEl = document.getElementById('auth-error');
+          errorEl.textContent = 'Session expired. Please log in again.';
+          logout();
+        }
+      });
+
+      socket.on('disconnect', () => console.log('Socket disconnected'));
+
+      // ── RECEIVE GLOBAL MESSAGES ──
+      socket.on('receive_global_message', (data) => {
+        const type = data.sender === currentUser ? 'sent' : 'received';
+        appendMessage('global-messages', data.sender, data.message, formatTime(data.createdAt), type);
+
+        if (activeTab !== 'global' && data.sender !== currentUser) {
+          unreadGlobal++;
+          const badge = document.getElementById('global-tab-badge');
+          badge.textContent = unreadGlobal;
+          badge.style.display = 'inline';
+        }
+      });
+
+      // ── RECEIVE PRIVATE MESSAGES ──
+      socket.on('receive_message', (data) => {
+        const type = data.sender === currentUser ? 'sent' : 'received';
+        appendMessage('private-messages', data.sender, data.message, formatTime(data.createdAt), type);
+      });
+
+      // ── ONLINE USERS ──
+      socket.on('online_users', renderOnlineUsers);
+    }
+
     // ── GLOBAL CHAT ──
+    // Sends the JWT in the Authorization header so the server can verify
+    // who is requesting the history.
     async function loadGlobalHistory() {
       try {
-        const res      = await fetch('/messages/global');
-        const history  = await res.json();
+        const res = await fetch('/messages/global', {
+          headers: { 'Authorization': `Bearer ${currentToken}` }
+        });
+        if (!res.ok) throw new Error('Not authorized');
+        const history = await res.json();
         if (history.length === 0) {
           appendSystem('global-messages', 'Welcome to Global Chat! Say hello 👋');
         } else {
@@ -565,29 +753,17 @@
     function sendGlobalMessage() {
       const input = document.getElementById('global-input');
       const text  = input.value.trim();
-      if (!text) return;
+      if (!text || !socket) return;
+      if ([...text].length > MAX_LENGTH) return;  // code-point length check
       socket.emit('send_global_message', { sender: currentUser, message: text });
       input.value = '';
+      updateCounter('global');
     }
-
-    // Receive global messages in real time
-    socket.on('receive_global_message', (data) => {
-      const type = data.sender === currentUser ? 'sent' : 'received';
-      appendMessage('global-messages', data.sender, data.message, formatTime(data.createdAt), type);
-
-      // If user is on private tab, show unread badge on Global tab
-      if (activeTab !== 'global' && data.sender !== currentUser) {
-        unreadGlobal++;
-        const badge = document.getElementById('global-tab-badge');
-        badge.textContent = unreadGlobal;
-        badge.style.display = 'inline';
-      }
-    });
 
     // ── PRIVATE CHAT ──
     async function startChat() {
       const recipient = document.getElementById('recipient-input').value.trim();
-      if (!recipient || recipient === currentUser) return;
+      if (!recipient || recipient === currentUser || !socket) return;
 
       currentRecipient = recipient;
       currentRoom      = getRoomId(currentUser, recipient);
@@ -597,7 +773,10 @@
       appendSystem('private-messages', `Now chatting with ${recipient}`);
 
       try {
-        const res     = await fetch(`/messages/${currentUser}/${recipient}`);
+        const res = await fetch(`/messages/${currentUser}/${recipient}`, {
+          headers: { 'Authorization': `Bearer ${currentToken}` }
+        });
+        if (!res.ok) throw new Error('Not authorized');
         const history = await res.json();
         if (history.length === 0) {
           appendSystem('private-messages', 'No messages yet. Say hello!');
@@ -613,26 +792,16 @@
     function sendPrivateMessage() {
       const input = document.getElementById('private-input');
       const text  = input.value.trim();
-      if (!text) return;
+      if (!text || !socket) return;
+      if ([...text].length > MAX_LENGTH) return;
       if (!currentRoom) { appendSystem('private-messages', 'Open a chat first.'); return; }
       socket.emit('send_message', {
         sender: currentUser, receiver: currentRecipient,
         message: text, room: currentRoom
       });
       input.value = '';
+      updateCounter('private');
     }
-
-    socket.on('receive_message', (data) => {
-      const type = data.sender === currentUser ? 'sent' : 'received';
-      appendMessage('private-messages', data.sender, data.message, formatTime(data.createdAt), type);
-    });
-
-    // ── ONLINE USERS ──
-    socket.on('online_users', renderOnlineUsers);
-
-    // ── CONNECTION ──
-    socket.on('connect',    () => console.log('Socket connected:', socket.id));
-    socket.on('disconnect', () => console.log('Socket disconnected'));
   </script>
 </body>
 </html>

@@ -115,19 +115,35 @@ const onlineUsers = new Set();
 // Track typing timeouts so we can auto-clear if client disconnects
 const typingTimeouts = new Map(); // key: `${username}:${room}` -> timeout
 
+// ── SOCKET AUTH MIDDLEWARE ──
+// Runs before every connection is accepted.
+// The client passes its JWT in the handshake auth object:
+//   io({ auth: { token: '<jwt>' } })
+// Connections with a missing or invalid token are rejected here,
+// so every socket that reaches io.on('connection') is already authenticated
+// and socket.username is guaranteed to be set from the verified token.
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (!token) {
+    return next(new Error('Authentication required'));
+  }
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    socket.username = payload.username;
+    next();
+  } catch {
+    next(new Error('Invalid or expired token'));
+  }
+});
+
 io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
-
-  socket.on('user_online', (username) => {
-    if (!username || typeof username !== 'string' || username.length > 30) return;
-
-    socket.username = username;
-    onlineUsers.add(username);
-    socket.join('global');
-
-    io.emit('online_users', Array.from(onlineUsers));
-    console.log(`${username} is online. Total: ${onlineUsers.size}`);
-  });
+  // username is guaranteed to be set by the auth middleware above —
+  // no need for a separate user_online event.
+  const username = socket.username;
+  onlineUsers.add(username);
+  socket.join('global');
+  io.emit('online_users', Array.from(onlineUsers));
+  console.log(`${username} connected (${socket.id}). Online: ${onlineUsers.size}`);
 
   socket.on('join_room', (roomId) => {
     if (!roomId || typeof roomId !== 'string' || roomId.length > 100) return;

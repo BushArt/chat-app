@@ -487,7 +487,10 @@
 
     const MAX_LEN = 1000;
 
-    const socket = io();
+    // Socket is created with autoConnect:false so it doesn't attempt to connect
+    // before we have a token. We call socket.connect() explicitly after login
+    // or session restore, at which point socket.auth.token is already set.
+    const socket = io({ autoConnect: false });
 
     // ── HELPERS ──
     function getRoomId(a, b) { return [a, b].sort().join('_'); }
@@ -696,13 +699,18 @@
         document.getElementById('auth-screen').classList.add('hidden');
         document.getElementById('chat-screen').classList.remove('hidden');
 
-        socket.emit('user_online', currentUser);
+        // Pass the token in the handshake so the server middleware can
+        // verify it and set socket.username before 'connection' fires.
+        socket.auth = { token: currentToken };
+        socket.connect();
         loadGlobalHistory();
 
       } catch { errorEl.textContent = 'Could not connect to server.'; }
     }
 
     function logout() {
+      socket.auth = { token: null };
+      socket.disconnect();
       localStorage.removeItem('chat_token');
       localStorage.removeItem('chat_user');
       currentUser = currentToken = currentRoom = currentRecipient = null;
@@ -724,7 +732,9 @@
     // ── GLOBAL CHAT ──
     async function loadGlobalHistory() {
       try {
-        const res     = await fetch('/messages/global');
+        const res     = await fetch('/messages/global', {
+          headers: { 'Authorization': `Bearer ${currentToken}` }
+        });
         const history = await res.json();
         if (history.length === 0) {
           appendSystem('global-messages', 'Welcome to Global Chat! Say hello 👋');
@@ -778,7 +788,9 @@
       appendSystem('private-messages', `Now chatting with ${recipient}`);
 
       try {
-        const res     = await fetch(`/messages/${currentUser}/${recipient}`);
+        const res     = await fetch(`/messages/${encodeURIComponent(currentUser)}/${encodeURIComponent(recipient)}`, {
+          headers: { 'Authorization': `Bearer ${currentToken}` }
+        });
         const history = await res.json();
         if (history.length === 0) {
           appendSystem('private-messages', 'No messages yet. Say hello!');
@@ -810,6 +822,10 @@
     }
 
     socket.on('receive_message', (data) => {
+      // Only render if this message belongs to the currently open private chat.
+      // Without this guard, messages from other rooms would bleed into whatever
+      // private conversation is open on screen.
+      if (!currentRoom || data.room !== currentRoom) return;
       const type = data.sender === currentUser ? 'sent' : 'received';
       appendMessage('private-messages', data.sender, data.message, data.createdAt, type);
     });
@@ -823,20 +839,36 @@
 
     socket.on('user_stopped_typing', ({ username, room }) => {
       if (room === 'global') hideTyping('global', username);
-      else hideTyping('private', username);
+      else if (room === currentRoom) hideTyping('private', username);
     });
 
     // ── ONLINE USERS ──
     socket.on('online_users', renderOnlineUsers);
 
     // ── CONNECTION ──
-    socket.on('connect',    () => console.log('Socket connected:', socket.id));
+    socket.on('connect', () => console.log('Socket connected:', socket.id));
     socket.on('disconnect', () => console.log('Socket disconnected'));
+
+    // If the server rejects the handshake (missing/expired token), boot the
+    // user back to the login screen and clear the stale session data.
+    socket.on('connect_error', (err) => {
+      console.warn('Socket auth failed:', err.message);
+      if (currentUser) {
+        // Token was rejected mid-session — clear state and force re-login
+        localStorage.removeItem('chat_token');
+        localStorage.removeItem('chat_user');
+        currentUser = currentToken = currentRoom = currentRecipient = null;
+        socket.auth = { token: null };
+        document.getElementById('chat-screen').classList.add('hidden');
+        document.getElementById('auth-screen').classList.remove('hidden');
+        document.getElementById('auth-error').textContent = 'Session expired. Please log in again.';
+      }
+    });
 
     // ── TEXTAREA EVENT SETUP ──
     // IME-safe: track composition state so Enter during Chinese input
     // (e.g. pinyin candidate selection) does NOT send the message.
-    function setupTextarea(textareaId, counterId, sendFn, room) {
+    function setupTextarea(textareaId, counterId, sendFn) {
       const textarea = document.getElementById(textareaId);
       let isComposing = false;
 
@@ -863,8 +895,8 @@
       });
     }
 
-    setupTextarea('global-input',  'global-char-counter',  sendGlobalMessage,  'global');
-    setupTextarea('private-input', 'private-char-counter', sendPrivateMessage, null);
+    setupTextarea('global-input',  'global-char-counter',  sendGlobalMessage);
+    setupTextarea('private-input', 'private-char-counter', sendPrivateMessage);
 
     // ── AUTO-RESTORE SESSION ──
     (function restoreSession() {
@@ -879,7 +911,8 @@
       document.getElementById('auth-screen').classList.add('hidden');
       document.getElementById('chat-screen').classList.remove('hidden');
 
-      socket.emit('user_online', currentUser);
+      socket.auth = { token: currentToken };
+      socket.connect();
       loadGlobalHistory();
     })();
   </script>

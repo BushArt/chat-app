@@ -1,5 +1,17 @@
 require('dotenv').config();
 
+// ─────────────────────────────────────────
+// ENV VALIDATION
+// Fail fast at startup if required vars are missing
+// rather than crashing mid-request with a cryptic error.
+// ─────────────────────────────────────────
+const REQUIRED_ENV = ['MONGO_URI', 'JWT_SECRET'];
+const missingEnv = REQUIRED_ENV.filter((key) => !process.env[key]);
+if (missingEnv.length > 0) {
+  console.error(`❌ Missing required environment variables: ${missingEnv.join(', ')}`);
+  process.exit(1);
+}
+
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -7,6 +19,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const Message = require('./models/Message');
 const authRoutes = require('./routes/auth');
+const jwt = require('jsonwebtoken');
 
 const app = express();
 const server = http.createServer(app);
@@ -29,6 +42,29 @@ app.use(express.json());
 app.use(express.static('public'));
 
 // ─────────────────────────────────────────
+// AUTH MIDDLEWARE
+// Verifies the JWT from the Authorization header.
+// Attach to any route that should require a logged-in user.
+// ─────────────────────────────────────────
+function verifyToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.startsWith('Bearer ')
+    ? authHeader.slice(7)
+    : null;
+
+  if (!token) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  try {
+    req.user = jwt.verify(token, process.env.JWT_SECRET);
+    next();
+  } catch {
+    return res.status(403).json({ error: 'Invalid or expired token' });
+  }
+}
+
+// ─────────────────────────────────────────
 // ROUTES
 // ─────────────────────────────────────────
 app.use('/auth', authRoutes);
@@ -37,7 +73,7 @@ app.get('/ping', (req, res) => {
   res.send('Server is running!');
 });
 
-app.get('/messages/global', async (req, res) => {
+app.get('/messages/global', verifyToken, async (req, res) => {
   try {
     const messages = await Message.find({ isGlobal: true })
       .sort({ createdAt: 1 })
@@ -48,8 +84,13 @@ app.get('/messages/global', async (req, res) => {
   }
 });
 
-app.get('/messages/:user1/:user2', async (req, res) => {
+app.get('/messages/:user1/:user2', verifyToken, async (req, res) => {
   const { user1, user2 } = req.params;
+
+  // Prevent users from reading other people's private conversations
+  if (req.user.username !== user1 && req.user.username !== user2) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
   try {
     const messages = await Message.find({
       isGlobal: false,

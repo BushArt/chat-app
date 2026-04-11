@@ -36,8 +36,10 @@ function isValidUsername(username) {
 
   // Allow: word characters (Latin/digits/_), hyphens,
   // and any CJK / Hangul / Hiragana / Katakana blocks.
-  // Disallow: whitespace, control chars, and everything else.
-  const allowed = /^[\w\-\u3000-\u9FFF\uA000-\uA4FF\uAC00-\uD7FF\uF900-\uFAFF\u2E80-\u2EFF\u31F0-\u31FF\u3040-\u30FF]+$/u;
+  // Disallow: whitespace (including U+3000 ideographic space),
+  // control chars, and everything else.
+  // NOTE: range starts at U+3001 (not U+3000) to exclude ideographic space.
+  const allowed = /^[\w\-\u3001-\u9FFF\uA000-\uA4FF\uAC00-\uD7FF\uF900-\uFAFF\u2E80-\u2EFF\u31F0-\u31FF\u3040-\u30FF]+$/u;
   return allowed.test(username);
 }
 
@@ -100,6 +102,11 @@ router.post('/login', authLimiter, async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ error: 'Invalid username or password' });
+    }
+
+    if (!process.env.JWT_SECRET) {
+      console.error('JWT_SECRET is not set');
+      return res.status(500).json({ error: 'Server configuration error' });
     }
 
     const token = jwt.sign(

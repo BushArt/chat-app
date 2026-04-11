@@ -232,7 +232,8 @@ io.on('connection', (socket) => {
       io.to(room).emit('receive_message', {
         sender,
         message: message.trim(),
-        createdAt: newMessage.createdAt
+        createdAt: newMessage.createdAt,
+        room
       });
 
     } catch (err) {

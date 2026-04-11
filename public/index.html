@@ -703,6 +703,7 @@
     }
 
     function logout() {
+      socket.disconnect();
       localStorage.removeItem('chat_token');
       localStorage.removeItem('chat_user');
       currentUser = currentToken = currentRoom = currentRecipient = null;
@@ -724,7 +725,9 @@
     // ── GLOBAL CHAT ──
     async function loadGlobalHistory() {
       try {
-        const res     = await fetch('/messages/global');
+        const res     = await fetch('/messages/global', {
+          headers: { 'Authorization': `Bearer ${currentToken}` }
+        });
         const history = await res.json();
         if (history.length === 0) {
           appendSystem('global-messages', 'Welcome to Global Chat! Say hello 👋');
@@ -778,7 +781,9 @@
       appendSystem('private-messages', `Now chatting with ${recipient}`);
 
       try {
-        const res     = await fetch(`/messages/${currentUser}/${recipient}`);
+        const res     = await fetch(`/messages/${encodeURIComponent(currentUser)}/${encodeURIComponent(recipient)}`, {
+          headers: { 'Authorization': `Bearer ${currentToken}` }
+        });
         const history = await res.json();
         if (history.length === 0) {
           appendSystem('private-messages', 'No messages yet. Say hello!');
@@ -810,6 +815,10 @@
     }
 
     socket.on('receive_message', (data) => {
+      // Only render if this message belongs to the currently open private chat.
+      // Without this guard, messages from other rooms would bleed into whatever
+      // private conversation is open on screen.
+      if (!currentRoom || data.room !== currentRoom) return;
       const type = data.sender === currentUser ? 'sent' : 'received';
       appendMessage('private-messages', data.sender, data.message, data.createdAt, type);
     });
@@ -823,7 +832,7 @@
 
     socket.on('user_stopped_typing', ({ username, room }) => {
       if (room === 'global') hideTyping('global', username);
-      else hideTyping('private', username);
+      else if (room === currentRoom) hideTyping('private', username);
     });
 
     // ── ONLINE USERS ──
@@ -836,7 +845,7 @@
     // ── TEXTAREA EVENT SETUP ──
     // IME-safe: track composition state so Enter during Chinese input
     // (e.g. pinyin candidate selection) does NOT send the message.
-    function setupTextarea(textareaId, counterId, sendFn, room) {
+    function setupTextarea(textareaId, counterId, sendFn) {
       const textarea = document.getElementById(textareaId);
       let isComposing = false;
 
@@ -863,8 +872,8 @@
       });
     }
 
-    setupTextarea('global-input',  'global-char-counter',  sendGlobalMessage,  'global');
-    setupTextarea('private-input', 'private-char-counter', sendPrivateMessage, null);
+    setupTextarea('global-input',  'global-char-counter',  sendGlobalMessage);
+    setupTextarea('private-input', 'private-char-counter', sendPrivateMessage);
 
     // ── AUTO-RESTORE SESSION ──
     (function restoreSession() {

@@ -708,7 +708,7 @@
       } catch { errorEl.textContent = 'Could not connect to server.'; }
     }
 
-    function logout() {
+   function logout() {
       socket.auth = { token: null };
       socket.disconnect();
       localStorage.removeItem('chat_token');

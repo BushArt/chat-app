@@ -23,9 +23,14 @@ const jwt = require('jsonwebtoken');
 
 const app = express();
 const server = http.createServer(app);
+// allowedOrigin is resolved in the MIDDLEWARE block below.
+// It is hoisted here via let so both the Server constructor and
+// the Express cors() call share the same origin value.
+let allowedOrigin;
+
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_ORIGIN || '*',
+    get origin() { return allowedOrigin; },
     methods: ['GET', 'POST']
   }
 });
@@ -35,9 +40,15 @@ const MAX_MESSAGE_LENGTH = 1000;
 // ─────────────────────────────────────────
 // MIDDLEWARE
 // ─────────────────────────────────────────
-app.use(cors({
-  origin: process.env.CLIENT_ORIGIN || '*'
-}));
+// In production CLIENT_ORIGIN must be set explicitly — wildcard is not allowed.
+// In development it falls back to '*' for convenience.
+allowedOrigin = process.env.CLIENT_ORIGIN ||
+  (process.env.NODE_ENV !== 'production' ? '*' : null);
+if (!allowedOrigin) {
+  console.error('❌ CLIENT_ORIGIN must be set in production');
+  process.exit(1);
+}
+app.use(cors({ origin: allowedOrigin }));
 app.use(express.json());
 app.use(express.static('public'));
 
@@ -110,10 +121,18 @@ app.get('/messages/:user1/:user2', verifyToken, async (req, res) => {
 // ─────────────────────────────────────────
 // SOCKET.IO
 // ─────────────────────────────────────────
-const onlineUsers = new Set();
+// Maps username -> number of active socket connections.
+// Using a count instead of a Set means a user with multiple tabs open
+// only disappears from the online list when ALL their tabs are closed.
+const onlineUsers = new Map(); // username -> connection count
 
 // Track typing timeouts so we can auto-clear if client disconnects
 const typingTimeouts = new Map(); // key: `${username}:${room}` -> timeout
+
+// Helper: returns the list of currently online usernames for broadcasting
+function getOnlineList() {
+  return Array.from(onlineUsers.keys());
+}
 
 // ── SOCKET AUTH MIDDLEWARE ──
 // Runs before every connection is accepted.
@@ -136,14 +155,39 @@ io.use((socket, next) => {
   }
 });
 
+// Per-socket message rate limiter: max 10 messages per 5 seconds.
+// Counts reset on a rolling window. Sockets that exceed the limit
+// are warned once and their message silently dropped until the window resets.
+const RATE_LIMIT_MAX      = 10;  // messages
+const RATE_LIMIT_WINDOW   = 5000; // ms
+
+function makeRateLimiter() {
+  let count = 0;
+  let resetTimer = null;
+  return function isAllowed() {
+    if (resetTimer === null) {
+      resetTimer = setTimeout(() => {
+        count = 0;
+        resetTimer = null;
+      }, RATE_LIMIT_WINDOW);
+    }
+    count++;
+    return count <= RATE_LIMIT_MAX;
+  };
+}
+
 io.on('connection', (socket) => {
   // username is guaranteed to be set by the auth middleware above —
   // no need for a separate user_online event.
   const username = socket.username;
-  onlineUsers.add(username);
+  // Increment connection count — user may have multiple tabs open
+  onlineUsers.set(username, (onlineUsers.get(username) || 0) + 1);
   socket.join('global');
-  io.emit('online_users', Array.from(onlineUsers));
-  console.log(`${username} connected (${socket.id}). Online: ${onlineUsers.size}`);
+  io.emit('online_users', getOnlineList());
+  console.log(`${username} connected (${socket.id}). Connections: ${onlineUsers.get(username)}. Unique online: ${onlineUsers.size}`);
+
+  // One rate limiter shared across all message events for this socket
+  const messageAllowed = makeRateLimiter();
 
   socket.on('join_room', (roomId) => {
     if (!roomId || typeof roomId !== 'string' || roomId.length > 100) return;
@@ -184,11 +228,15 @@ io.on('connection', (socket) => {
   socket.on('send_global_message', async (data) => {
     const sender = socket.username;
     if (!sender) return;
+    if (!messageAllowed()) {
+      socket.emit('error_message', { error: 'You are sending messages too fast.' });
+      return;
+    }
 
     const message = data?.message;
     if (!message || typeof message !== 'string') return;
-    if (message.trim().length === 0) return;
-    if (message.length > MAX_MESSAGE_LENGTH) return;
+    if ([...message.trim()].length === 0) return;
+    if ([...message].length > MAX_MESSAGE_LENGTH) return;
 
     // Stop typing indicator when message is sent
     const key = `${sender}:global`;
@@ -219,14 +267,18 @@ io.on('connection', (socket) => {
   socket.on('send_message', async (data) => {
     const sender = socket.username;
     if (!sender) return;
+    if (!messageAllowed()) {
+      socket.emit('error_message', { error: 'You are sending messages too fast.' });
+      return;
+    }
 
     const message = data?.message;
     const receiver = data?.receiver;
     const room = data?.room;
 
     if (!message || typeof message !== 'string') return;
-    if (message.trim().length === 0) return;
-    if (message.length > MAX_MESSAGE_LENGTH) return;
+    if ([...message.trim()].length === 0) return;
+    if ([...message].length > MAX_MESSAGE_LENGTH) return;
     if (!receiver || typeof receiver !== 'string') return;
     if (!room || typeof room !== 'string') return;
 
@@ -259,16 +311,24 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     if (socket.username) {
-      onlineUsers.delete(socket.username);
-      io.emit('online_users', Array.from(onlineUsers));
-      console.log(`${socket.username} went offline`);
+      const remaining = (onlineUsers.get(socket.username) || 1) - 1;
+      if (remaining <= 0) {
+        // All tabs closed — user is truly offline
+        onlineUsers.delete(socket.username);
+        io.emit('online_users', getOnlineList());
+        console.log(`${socket.username} fully offline`);
 
-      // Clean up any lingering typing timeouts for this user
-      for (const [key, timeout] of typingTimeouts.entries()) {
-        if (key.startsWith(`${socket.username}:`)) {
-          clearTimeout(timeout);
-          typingTimeouts.delete(key);
+        // Clean up any lingering typing timeouts for this user
+        for (const [key, timeout] of typingTimeouts.entries()) {
+          if (key.startsWith(`${socket.username}:`)) {
+            clearTimeout(timeout);
+            typingTimeouts.delete(key);
+          }
         }
+      } else {
+        // Still has other tabs open — stay in the online list
+        onlineUsers.set(socket.username, remaining);
+        console.log(`${socket.username} closed a tab (${remaining} connection(s) remaining)`);
       }
     }
   });

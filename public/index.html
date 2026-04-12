@@ -708,7 +708,7 @@
       } catch { errorEl.textContent = 'Could not connect to server.'; }
     }
 
-   function logout() {
+    function logout() {
       socket.auth = { token: null };
       socket.disconnect();
       localStorage.removeItem('chat_token');
@@ -748,7 +748,16 @@
       } catch { appendSystem('global-messages', 'Could not load history.'); }
     }
 
+    // Guards against double-send from rapid button clicks or Enter key bouncing.
+    // Set to true while a send is in-flight; reset after a short debounce.
+    let sendingGlobal  = false;
+    let sendingPrivate = false;
+
     function sendGlobalMessage() {
+      if (sendingGlobal) return;
+      sendingGlobal = true;
+      setTimeout(() => { sendingGlobal = false; }, 300);
+
       const textarea = document.getElementById('global-input');
       const text = textarea.value.trim();
       if (!text) return;
@@ -805,6 +814,10 @@
     }
 
     function sendPrivateMessage() {
+      if (sendingPrivate) return;
+      sendingPrivate = true;
+      setTimeout(() => { sendingPrivate = false; }, 300);
+
       const textarea = document.getElementById('private-input');
       const text = textarea.value.trim();
       if (!text) return;
@@ -840,6 +853,14 @@
     socket.on('user_stopped_typing', ({ username, room }) => {
       if (room === 'global') hideTyping('global', username);
       else if (room === currentRoom) hideTyping('private', username);
+    });
+
+    // ── SERVER ERROR FEEDBACK ──
+    // Displays rate-limit and other server-side rejections inline in the
+    // active chat panel so the user knows their message was not sent.
+    socket.on('error_message', ({ error }) => {
+      const panel = activeTab === 'global' ? 'global-messages' : 'private-messages';
+      appendSystem(panel, `⚠️ ${error}`);
     });
 
     // ── ONLINE USERS ──

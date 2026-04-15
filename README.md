@@ -12,6 +12,11 @@ A real-time chat application built with Node.js, Socket.IO, and MongoDB. Users c
 - Message history stored in MongoDB and loaded when a chat is opened
 - Session persistence — stay logged in after a page refresh
 - Online users sidebar — click a name to open a private chat
+- Typing indicators for global and private chats
+- Character counter with 1000-character message limit
+- Light/dark theme toggle and relative/exact timestamp toggle
+- Mobile-responsive layout with scrollable online user list
+- Optimistic message sending with pending-state UI
 - Rate limiting on auth routes to prevent brute-force attacks
 - XSS protection — all message content is safely rendered as plain text
 
@@ -105,7 +110,8 @@ Visit `http://localhost:3000` in your browser.
 2. Log in — your session is saved so you stay logged in after a refresh
 3. Use **Global Chat** to message everyone online
 4. Click any name in the online sidebar, or type a username in the **Chat with:** field to open a private chat
-5. Click **Log Out** to end your session
+5. Use the header controls to switch **Time format** and **Theme** if desired
+6. Click **Log Out** to end your session
 
 ---
 
@@ -172,6 +178,7 @@ This app is deployed on **Railway** with **MongoDB Atlas** as the cloud database
 - Socket messages are validated server-side — sender identity comes from the verified socket session, not client data
 - Messages are capped at 1000 characters
 - All message content is rendered with `textContent` (not `innerHTML`) to prevent XSS
+- HTTP and Socket auth both require JWT; invalid/expired tokens are rejected
 
 ---
 
@@ -185,8 +192,10 @@ This app is deployed on **Railway** with **MongoDB Atlas** as the cloud database
 - [x] Session persistence (localStorage)
 - [x] Rate limiting
 - [x] XSS protection
+- [x] Typing indicators
+- [x] Dark mode
+- [x] Relative/exact time toggle
 - [x] Deployed to Railway
-- [ ] Typing indicators
 - [ ] Read receipts
 - [ ] Group chats
 - [ ] Image sharing

@@ -255,7 +255,8 @@ io.on('connection', (socket) => {
       io.to('global').emit('receive_global_message', {
         sender,
         message: message.trim(),
-        createdAt: newMessage.createdAt
+        createdAt: newMessage.createdAt,
+        clientId: data?.clientId || null
       });
 
     } catch (err) {
@@ -301,7 +302,8 @@ io.on('connection', (socket) => {
         sender,
         message: message.trim(),
         createdAt: newMessage.createdAt,
-        room
+        room,
+        clientId: data?.clientId || null
       });
 
     } catch (err) {

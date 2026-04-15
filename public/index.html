@@ -1175,21 +1175,41 @@
       if (!FEATURE_FLAGS.optimisticSend) return null;
       const clientId = createClientId();
       const containerId = channel === "global" ? "global-messages" : "private-messages";
-      const bubble = appendMessage(containerId, currentUser, text, new Date().toISOString(), "sent", { pending: true, clientId });
+      appendMessage(containerId, currentUser, text, new Date().toISOString(), "sent", { pending: true, clientId });
       optimisticByChannel[channel].push({ clientId, text });
-      return bubble;
+      return clientId;
     }
 
     function resolveOptimistic(channel, incoming) {
       if (!FEATURE_FLAGS.optimisticSend) return false;
       const queue = optimisticByChannel[channel];
       if (!Array.isArray(queue) || queue.length === 0) return false;
-      const idx = queue.findIndex((entry) => entry.text === incoming.message);
+
+      const clientId = incoming?.clientId;
+      let idx = -1;
+      if (clientId) {
+        idx = queue.findIndex((entry) => entry.clientId === clientId);
+      }
+      if (idx === -1) {
+        idx = queue.findIndex((entry) => entry.text === incoming.message);
+      }
       if (idx === -1) return false;
+
       queue.splice(idx, 1);
       const container = channel === "global" ? dom.globalMessages : dom.privateMessages;
-      const pending = container.querySelector(".message.pending");
-      if (pending) pending.remove();
+      const selector = clientId ? `.message.pending[data-client-id="${clientId}"]` : ".message.pending";
+      const pending = container.querySelector(selector);
+      if (!pending) return false;
+      pending.classList.remove("pending");
+      pending.removeAttribute("data-client-id");
+
+      const meta = pending.querySelector(".meta");
+      if (meta && incoming.createdAt) {
+        meta.dataset.time = incoming.createdAt;
+        meta.textContent = displayTime(incoming.createdAt);
+        meta.title = formatTime(incoming.createdAt);
+      }
+
       return true;
     }
 
@@ -1200,8 +1220,8 @@
       sendingGlobal = true;
       setTimeout(() => { sendingGlobal = false; }, 260);
 
-      addOptimisticMessage("global", text);
-      socket.emit("send_global_message", { sender: currentUser, message: text });
+      const clientId = addOptimisticMessage("global", text);
+      socket.emit("send_global_message", { sender: currentUser, message: text, clientId });
       socket.emit("stop_typing", { room: "global" });
       clearTimeout(typingTimers.global);
       dom.globalInput.value = "";
@@ -1220,12 +1240,13 @@
       sendingPrivate = true;
       setTimeout(() => { sendingPrivate = false; }, 260);
 
-      addOptimisticMessage("private", text);
+      const clientId = addOptimisticMessage("private", text);
       socket.emit("send_message", {
         sender: currentUser,
         receiver: currentRecipient,
         message: text,
-        room: currentRoom
+        room: currentRoom,
+        clientId
       });
       socket.emit("stop_typing", { room: currentRoom });
       clearTimeout(typingTimers[currentRoom]);

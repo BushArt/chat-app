@@ -36,6 +36,9 @@ const io = new Server(server, {
 });
 
 const MAX_MESSAGE_LENGTH = 1000;
+const TYPING_TIMEOUT = 4000;
+const MAX_HISTORY_GLOBAL = 100;
+const MAX_HISTORY_PRIVATE = 50;
 
 // ─────────────────────────────────────────
 // MIDDLEWARE
@@ -49,8 +52,18 @@ if (!allowedOrigin) {
   process.exit(1);
 }
 app.use(cors({ origin: allowedOrigin }));
-app.use(express.json());
-app.use(express.static('public'));
+app.use(express.json({ limit: '100kb' }));
+app.use(express.static('public', { maxAge: '1d' }));
+
+// Security Headers
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.removeHeader('X-Powered-By');
+  next();
+});
 
 // ─────────────────────────────────────────
 // AUTH MIDDLEWARE
@@ -88,7 +101,7 @@ app.get('/messages/global', verifyToken, async (req, res) => {
   try {
     const messages = await Message.find({ isGlobal: true })
       .sort({ createdAt: 1 })
-      .limit(100);
+      .limit(MAX_HISTORY_GLOBAL);
     res.json(messages);
   } catch (err) {
     res.status(500).json({ error: 'Could not fetch global messages' });
@@ -111,7 +124,7 @@ app.get('/messages/:user1/:user2', verifyToken, async (req, res) => {
       ]
     })
     .sort({ createdAt: 1 })
-    .limit(50);
+    .limit(MAX_HISTORY_PRIVATE);
     res.json(messages);
   } catch (err) {
     res.status(500).json({ error: 'Could not fetch messages' });
@@ -128,6 +141,7 @@ const onlineUsers = new Map(); // username -> connection count
 
 // Track typing timeouts so we can auto-clear if client disconnects
 const typingTimeouts = new Map(); // key: `${username}:${room}` -> timeout
+const MAX_TYPING_ENTRIES = 10000; // Prevent unlimited growth
 
 // Helper: returns the list of currently online usernames for broadcasting
 function getOnlineList() {
@@ -164,7 +178,8 @@ const RATE_LIMIT_WINDOW   = 5000; // ms
 function makeRateLimiter() {
   let count = 0;
   let resetTimer = null;
-  return function isAllowed() {
+  
+  const isAllowed = function() {
     if (resetTimer === null) {
       resetTimer = setTimeout(() => {
         count = 0;
@@ -174,6 +189,15 @@ function makeRateLimiter() {
     count++;
     return count <= RATE_LIMIT_MAX;
   };
+  
+  isAllowed.cleanup = function() {
+    if (resetTimer !== null) {
+      clearTimeout(resetTimer);
+      resetTimer = null;
+    }
+  };
+  
+  return isAllowed;
 }
 
 io.on('connection', (socket) => {
@@ -191,8 +215,21 @@ io.on('connection', (socket) => {
 
   socket.on('join_room', (roomId) => {
     if (!roomId || typeof roomId !== 'string' || roomId.length > 100) return;
-    socket.join(roomId);
-    console.log(`${socket.id} joined room: ${roomId}`);
+    
+    // Allow global room for everyone
+    if (roomId === 'global') {
+      socket.join(roomId);
+      console.log(`${socket.id} joined room: ${roomId}`);
+      return;
+    }
+    
+    // Verify user is authorized for this private room
+    // Private room id format is "user1_user2" sorted alphabetically
+    const parts = roomId.split('_');
+    if (parts.length === 2 && (parts[0] === socket.username || parts[1] === socket.username)) {
+      socket.join(roomId);
+      console.log(`${socket.id} joined room: ${roomId}`);
+    }
   });
 
   // ── TYPING INDICATORS ──
@@ -207,10 +244,19 @@ io.on('connection', (socket) => {
 
     // Auto-stop typing after 4 seconds in case client doesn't send stop_typing
     clearTimeout(typingTimeouts.get(key));
-    typingTimeouts.set(key, setTimeout(() => {
-      socket.to(room).emit('user_stopped_typing', { username: sender, room });
-      typingTimeouts.delete(key);
-    }, 4000));
+    
+    // LRU cleanup: if we hit max size, remove oldest entry
+    if (typingTimeouts.size >= MAX_TYPING_ENTRIES) {
+      const oldestKey = typingTimeouts.keys().next().value;
+      const oldestTimeout = typingTimeouts.get(oldestKey);
+      clearTimeout(oldestTimeout);
+      typingTimeouts.delete(oldestKey);
+    }
+    
+      typingTimeouts.set(key, setTimeout(() => {
+        socket.to(room).emit('user_stopped_typing', { username: sender, room });
+        typingTimeouts.delete(key);
+      }, TYPING_TIMEOUT));
   });
 
   socket.on('stop_typing', ({ room }) => {
@@ -238,6 +284,9 @@ io.on('connection', (socket) => {
     if ([...message.trim()].length === 0) return;
     if ([...message].length > MAX_MESSAGE_LENGTH) return;
 
+    // Strip HTML tags to prevent XSS
+    const sanitizedMessage = message.replace(/<[^>]*>/g, '');
+
     // Stop typing indicator when message is sent
     const key = `${sender}:global`;
     clearTimeout(typingTimeouts.get(key));
@@ -247,14 +296,14 @@ io.on('connection', (socket) => {
     try {
       const newMessage = new Message({
         sender,
-        message: message.trim(),
+        message: sanitizedMessage.trim(),
         isGlobal: true
       });
       await newMessage.save();
 
       io.to('global').emit('receive_global_message', {
         sender,
-        message: message.trim(),
+        message: sanitizedMessage.trim(),
         createdAt: newMessage.createdAt,
         clientId: data?.clientId || null
       });
@@ -283,6 +332,9 @@ io.on('connection', (socket) => {
     if (!receiver || typeof receiver !== 'string') return;
     if (!room || typeof room !== 'string') return;
 
+    // Strip HTML tags to prevent XSS
+    const sanitizedMessage = message.replace(/<[^>]*>/g, '');
+
     // Stop typing indicator when message is sent
     const key = `${sender}:${room}`;
     clearTimeout(typingTimeouts.get(key));
@@ -293,14 +345,14 @@ io.on('connection', (socket) => {
       const newMessage = new Message({
         sender,
         receiver,
-        message: message.trim(),
+        message: sanitizedMessage.trim(),
         isGlobal: false
       });
       await newMessage.save();
 
       io.to(room).emit('receive_message', {
         sender,
-        message: message.trim(),
+        message: sanitizedMessage.trim(),
         createdAt: newMessage.createdAt,
         room,
         clientId: data?.clientId || null
@@ -312,6 +364,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
+    // Clean up rate limiter timer to prevent memory leak
+    messageAllowed.cleanup();
+    
     if (socket.username) {
       const remaining = (onlineUsers.get(socket.username) || 1) - 1;
       if (remaining <= 0) {

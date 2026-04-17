@@ -47,8 +47,11 @@ const optimisticByChannel = { global: [], private: [] };
 const jumpButtons = {};
 const privateMessagesBuffer = new Map();
 const MAX_BUFFERED_ROOMS = 50;
-const OPTIMISTIC_TIMEOUT = 30000;
+const OPTIMISTIC_TIMEOUT = 31000;
 const TYPING_DEBOUNCE_MS = 200;
+
+// Track optimistic message timeouts
+const optimisticTimeouts = new Map();
 
 // Socket intentionally keeps the same transport contract.
 const socket = io({ autoConnect: false });
@@ -562,10 +565,16 @@ function addOptimisticMessage(channel, text) {
 
 function resolveOptimistic(channel, incoming) {
   if (!FEATURE_FLAGS.optimisticSend) return false;
+  
+  // Cancel failure timeout when message is successfully confirmed
+  const clientId = incoming?.clientId;
+  if (clientId && optimisticTimeouts.has(clientId)) {
+    clearTimeout(optimisticTimeouts.get(clientId));
+    optimisticTimeouts.delete(clientId);
+  }
+
   const queue = optimisticByChannel[channel];
   if (!Array.isArray(queue) || queue.length === 0) return false;
-
-  const clientId = incoming?.clientId;
   let idx = -1;
   if (clientId) {
     idx = queue.findIndex((entry) => entry.clientId === clientId);
@@ -594,6 +603,12 @@ function resolveOptimistic(channel, incoming) {
 }
 
 function clearOptimisticPending(channel, clientId) {
+  // Clean up timeout if it still exists
+  if (optimisticTimeouts.has(clientId)) {
+    clearTimeout(optimisticTimeouts.get(clientId));
+    optimisticTimeouts.delete(clientId);
+  }
+
   const queue = optimisticByChannel[channel];
   if (!Array.isArray(queue)) return;
 
@@ -621,11 +636,20 @@ function sendGlobalMessage() {
   socket.emit("stop_typing", { room: "global" });
   clearTimeout(typingTimers.global);
   
-  // Timeout optimistic message after 30s if no response
-  setTimeout(() => {
+  // Timeout optimistic message after 31s if no response
+  const timeoutId = setTimeout(() => {
+    // ✅ ULTIMATE GUARD: This is the final check. Nothing gets past this.
+    if (optimisticTimeouts.get(clientId) === 'fired') return;
+    optimisticTimeouts.set(clientId, 'fired');
+    
+    const pending = document.querySelector(`#global-messages .message.pending[data-client-id="${clientId}"]`);
+    if (!pending) return;
+    
     clearOptimisticPending("global", clientId);
     appendSystem("global-messages", "Message failed to send. Please try again.");
   }, OPTIMISTIC_TIMEOUT);
+  
+  optimisticTimeouts.set(clientId, timeoutId);
   dom.globalInput.value = "";
   autoResize(dom.globalInput);
   updateCharCounter(dom.globalInput, dom.globalCounter, dom.sendGlobal);
@@ -652,11 +676,20 @@ function sendPrivateMessage() {
   socket.emit("stop_typing", { room: currentRoom });
   clearTimeout(typingTimers[currentRoom]);
   
-  // Timeout optimistic message after 30s if no response
-  setTimeout(() => {
+  // Timeout optimistic message after 31s if no response
+  const timeoutId = setTimeout(() => {
+    // ✅ ULTIMATE GUARD: This is the final check. Nothing gets past this.
+    if (optimisticTimeouts.get(clientId) === 'fired') return;
+    optimisticTimeouts.set(clientId, 'fired');
+    
+    const pending = document.querySelector(`#private-messages .message.pending[data-client-id="${clientId}"]`);
+    if (!pending) return;
+    
     clearOptimisticPending("private", clientId);
     appendSystem("private-messages", "Message failed to send. Please try again.");
   }, OPTIMISTIC_TIMEOUT);
+  
+  optimisticTimeouts.set(clientId, timeoutId);
   dom.privateInput.value = "";
   autoResize(dom.privateInput);
   updateCharCounter(dom.privateInput, dom.privateCounter, dom.sendPrivate);
@@ -666,6 +699,12 @@ function sendPrivateMessage() {
 socket.on("receive_global_message", (data) => {
   if (!data || typeof data.message !== "string") return;
   const type = data.sender === currentUser ? "sent" : "received";
+  
+  // ✅ FINAL FAILSAFE: Always cancel timeout for our messages - NO EXCEPTIONS
+  if (type === "sent" && data.clientId && optimisticTimeouts.has(data.clientId)) {
+    clearTimeout(optimisticTimeouts.get(data.clientId));
+    optimisticTimeouts.delete(data.clientId);
+  }
   if (!(type === "sent" && resolveOptimistic("global", data))) {
     appendMessage("global-messages", data.sender, data.message, data.createdAt || new Date().toISOString(), type);
   }
@@ -684,6 +723,12 @@ socket.on("receive_global_message", (data) => {
 socket.on("receive_message", (data) => {
   if (!data || typeof data.message !== "string") return;
   const type = data.sender === currentUser ? "sent" : "received";
+  
+  // ✅ FINAL FAILSAFE: Always cancel timeout for our messages - NO EXCEPTIONS
+  if (type === "sent" && data.clientId && optimisticTimeouts.has(data.clientId)) {
+    clearTimeout(optimisticTimeouts.get(data.clientId));
+    optimisticTimeouts.delete(data.clientId);
+  }
   if (data.room === currentRoom) {
     if (!(type === "sent" && resolveOptimistic("private", data))) {
       appendMessage("private-messages", data.sender, data.message, data.createdAt || new Date().toISOString(), type);
@@ -752,6 +797,10 @@ socket.on("connect", () => {
     // Clear sending flags on disconnect to prevent permanent lockup
     sendingGlobal = false;
     sendingPrivate = false;
+    
+    // Clear all pending optimistic timeouts
+    optimisticTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+    optimisticTimeouts.clear();
   });
 
   socket.on("connect_error", (err) => {

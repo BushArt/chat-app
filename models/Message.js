@@ -16,6 +16,10 @@ const messageSchema = new mongoose.Schema({
   isGlobal: {
     type: Boolean,
     default: false   // true = global chat, false = private message
+  },
+  clientId: {
+    type: String,
+    default: null
   }
 }, {
   timestamps: true

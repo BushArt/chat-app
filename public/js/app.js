@@ -18,37 +18,13 @@ let unreadGlobal = 0;
 let unreadPrivate = 0;
 let sendingGlobal = false;
 let sendingPrivate = false;
-
-function safeLocalStorageGet(key) {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function safeLocalStorageSet(key, value) {
-  try {
-    localStorage.setItem(key, value);
-  } catch {}
-}
-
-function safeLocalStorageRemove(key) {
-  try {
-    localStorage.removeItem(key);
-  } catch {}
-}
-
-let timeFormat = safeLocalStorageGet("chat_time_format") || "relative";
+let timeFormat = localStorage.getItem("chat_time_format") || "relative";
 
 const typingState = { global: new Set(), private: new Set() };
 const typingTimers = {};
 const optimisticByChannel = { global: [], private: [] };
 const jumpButtons = {};
 const privateMessagesBuffer = new Map();
-const MAX_BUFFERED_ROOMS = 50;
-const OPTIMISTIC_TIMEOUT = 30000;
-const TYPING_DEBOUNCE_MS = 200;
 
 // Socket intentionally keeps the same transport contract.
 const socket = io({ autoConnect: false });
@@ -125,7 +101,7 @@ function setConnectionBanner(text) {
 
 function toggleTimeFormat() {
   timeFormat = timeFormat === "relative" ? "exact" : "relative";
-  safeLocalStorageSet("chat_time_format", timeFormat);
+  localStorage.setItem("chat_time_format", timeFormat);
   dom.btnTime.textContent = timeFormat === "relative" ? "Time: Relative" : "Time: Exact";
   refreshVisibleMeta();
 }
@@ -142,13 +118,13 @@ function refreshVisibleMeta() {
 
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
-  safeLocalStorageSet("chat_theme", theme);
+  localStorage.setItem("chat_theme", theme);
   dom.btnTheme.textContent = theme === "dark" ? "Light Mode" : "Dark Mode";
 }
 
 function initTheme() {
   if (!FEATURE_FLAGS.darkMode) return;
-  const savedTheme = safeLocalStorageGet("chat_theme");
+  const savedTheme = localStorage.getItem("chat_theme");
   const systemDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
   applyTheme(savedTheme || (systemDark ? "dark" : "light"));
 }
@@ -291,12 +267,9 @@ function renderTyping(channel) {
 }
 
 function handleTyping(room) {
-  // Debounce typing events
+  socket.emit("start_typing", { room });
   clearTimeout(typingTimers[room]);
-  typingTimers[room] = setTimeout(() => {
-    socket.emit("start_typing", { room });
-    setTimeout(() => socket.emit("stop_typing", { room }), 3000);
-  }, TYPING_DEBOUNCE_MS);
+  typingTimers[room] = setTimeout(() => socket.emit("stop_typing", { room }), 3000);
 }
 
 function clearTypingTimers() {
@@ -431,8 +404,8 @@ async function login() {
 
     currentToken = data.token;
     currentUser = data.username;
-    safeLocalStorageSet("chat_token", currentToken);
-    safeLocalStorageSet("chat_user", currentUser);
+    localStorage.setItem("chat_token", currentToken);
+    localStorage.setItem("chat_user", currentUser);
     dom.loggedInAs.textContent = "Logged in as: " + currentUser;
     dom.authScreen.classList.add("hidden");
     dom.chatScreen.classList.remove("hidden");
@@ -478,8 +451,8 @@ function resetChatUi() {
 function logout() {
   socket.auth = { token: null };
   socket.disconnect();
-  safeLocalStorageRemove("chat_token");
-  safeLocalStorageRemove("chat_user");
+  localStorage.removeItem("chat_token");
+  localStorage.removeItem("chat_user");
   resetChatUi();
   setConnectionBanner("");
   dom.usernameInput.value = "";
@@ -593,23 +566,6 @@ function resolveOptimistic(channel, incoming) {
   return true;
 }
 
-function clearOptimisticPending(channel, clientId) {
-  const queue = optimisticByChannel[channel];
-  if (!Array.isArray(queue)) return;
-
-  const index = queue.findIndex((entry) => entry.clientId === clientId);
-  if (index !== -1) queue.splice(index, 1);
-
-  const container = channel === "global" ? dom.globalMessages : dom.privateMessages;
-  if (!container) return;
-
-  const pending = container.querySelector(`.message.pending[data-client-id="${clientId}"]`);
-  if (pending) pending.remove();
-
-  if (channel === "global") sendingGlobal = false;
-  else sendingPrivate = false;
-}
-
 function sendGlobalMessage() {
   if (sendingGlobal) return;
   const text = dom.globalInput.value.trim();
@@ -620,12 +576,6 @@ function sendGlobalMessage() {
   socket.emit("send_global_message", { sender: currentUser, message: text, clientId });
   socket.emit("stop_typing", { room: "global" });
   clearTimeout(typingTimers.global);
-  
-  // Timeout optimistic message after 30s if no response
-  setTimeout(() => {
-    clearOptimisticPending("global", clientId);
-    appendSystem("global-messages", "Message failed to send. Please try again.");
-  }, OPTIMISTIC_TIMEOUT);
   dom.globalInput.value = "";
   autoResize(dom.globalInput);
   updateCharCounter(dom.globalInput, dom.globalCounter, dom.sendGlobal);
@@ -651,12 +601,6 @@ function sendPrivateMessage() {
   });
   socket.emit("stop_typing", { room: currentRoom });
   clearTimeout(typingTimers[currentRoom]);
-  
-  // Timeout optimistic message after 30s if no response
-  setTimeout(() => {
-    clearOptimisticPending("private", clientId);
-    appendSystem("private-messages", "Message failed to send. Please try again.");
-  }, OPTIMISTIC_TIMEOUT);
   dom.privateInput.value = "";
   autoResize(dom.privateInput);
   updateCharCounter(dom.privateInput, dom.privateCounter, dom.sendPrivate);
@@ -692,16 +636,8 @@ socket.on("receive_message", (data) => {
       sendingPrivate = false;
     }
   } else {
-    // Buffer message for later with true LRU eviction
-    if (privateMessagesBuffer.has(data.room)) {
-      const existingBuffer = privateMessagesBuffer.get(data.room);
-      privateMessagesBuffer.delete(data.room);
-      privateMessagesBuffer.set(data.room, existingBuffer);
-    } else {
-      if (privateMessagesBuffer.size >= MAX_BUFFERED_ROOMS) {
-        const oldestKey = privateMessagesBuffer.keys().next().value;
-        privateMessagesBuffer.delete(oldestKey);
-      }
+    // Buffer message for later
+    if (!privateMessagesBuffer.has(data.room)) {
       privateMessagesBuffer.set(data.room, []);
     }
     privateMessagesBuffer.get(data.room).push(data);
@@ -736,9 +672,6 @@ socket.on("user_stopped_typing", ({ username, room }) => {
 socket.on("error_message", ({ error }) => {
   const panelId = activeTab === "global" ? "global-messages" : "private-messages";
   appendSystem(panelId, "Warning: " + (error || "Message could not be sent."));
-  // Clear sending flags on error
-  sendingGlobal = false;
-  sendingPrivate = false;
 });
 
 socket.on("online_users", renderOnlineUsers);
@@ -747,29 +680,22 @@ socket.on("connect", () => {
   setConnectionBanner("");
 });
 
-  socket.on("disconnect", () => {
-    setConnectionBanner("Disconnected. Reconnecting...");
-    // Clear sending flags on disconnect to prevent permanent lockup
-    sendingGlobal = false;
-    sendingPrivate = false;
-  });
+socket.on("disconnect", () => {
+  setConnectionBanner("Disconnected. Reconnecting...");
+});
 
-  socket.on("connect_error", (err) => {
-    setConnectionBanner("Connection issue: " + err.message);
-    // Clear sending flags on connection error
-    sendingGlobal = false;
-    sendingPrivate = false;
-    
-    if (currentUser) {
-      safeLocalStorageRemove("chat_token");
-      safeLocalStorageRemove("chat_user");
-      resetChatUi();
-      socket.auth = { token: null };
-      dom.chatScreen.classList.add("hidden");
-      dom.authScreen.classList.remove("hidden");
-      dom.authError.textContent = "Session expired. Please log in again.";
-    }
-  });
+socket.on("connect_error", (err) => {
+  setConnectionBanner("Connection issue: " + err.message);
+  if (currentUser) {
+    localStorage.removeItem("chat_token");
+    localStorage.removeItem("chat_user");
+    resetChatUi();
+    socket.auth = { token: null };
+    dom.chatScreen.classList.add("hidden");
+    dom.authScreen.classList.remove("hidden");
+    dom.authError.textContent = "Session expired. Please log in again.";
+  }
+});
 
 // ---- input setup ----
 function setupTextarea(textarea, counter, sendButton, sendFn, roomGetter) {
@@ -802,8 +728,8 @@ function setupMessageContainer(container) {
 }
 
 function restoreSession() {
-  const savedToken = safeLocalStorageGet("chat_token");
-  const savedUser = safeLocalStorageGet("chat_user");
+  const savedToken = localStorage.getItem("chat_token");
+  const savedUser = localStorage.getItem("chat_user");
   if (!savedToken || !savedUser) return;
   currentToken = savedToken;
   currentUser = savedUser;

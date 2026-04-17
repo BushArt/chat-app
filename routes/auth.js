@@ -15,7 +15,10 @@ const authLimiter = rateLimit({
   max: 10,
   message: { error: 'Too many attempts, please try again later.' },
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  onLimitReached: (req, res, options) => {
+    console.warn(`⚠️ Rate limit exceeded for IP: ${req.ip}, path: ${req.path}`);
+  }
 });
 
 // ─────────────────────────────────────────
@@ -54,7 +57,10 @@ router.post('/register', authLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Username and password are required' });
     }
 
-    if (!isValidUsername(username)) {
+    // Input hygiene
+    const trimmedUsername = username.trim();
+
+    if (!isValidUsername(trimmedUsername)) {
       return res.status(400).json({
         error: 'Username must be 1–30 characters and may only contain letters, numbers, underscores, hyphens, or Chinese/Japanese/Korean characters.'
       });
@@ -63,14 +69,27 @@ router.post('/register', authLimiter, async (req, res) => {
     if (password.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
+    
+    if (password.length > 128) {
+      return res.status(400).json({ error: 'Password maximum length is 128 characters' });
+    }
 
-    const existingUser = await User.findOne({ username });
+    const existingUser = await User.findOne({ 
+      username: { $regex: new RegExp(`^${trimmedUsername}$`, 'i') } 
+    });
+    
     if (existingUser) {
       return res.status(400).json({ error: 'Username already taken' });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({ username, password: hashedPassword });
+    const bcryptRounds = parseInt(process.env.BCRYPT_ROUNDS) || 10;
+    const hashedPassword = await bcrypt.hash(password, bcryptRounds);
+    
+    const user = new User({ 
+      username: trimmedUsername, 
+      password: hashedPassword 
+    });
+    
     await user.save();
 
     res.status(201).json({ message: 'Account created! You can now log in.' });
@@ -92,15 +111,26 @@ router.post('/login', authLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Username and password are required' });
     }
 
-    const user = await User.findOne({ username });
+    // Input hygiene
+    const trimmedUsername = username.trim();
+
+    if (password.length > 128) {
+      return res.status(400).json({ error: 'Password maximum length is 128 characters' });
+    }
+
+    const user = await User.findOne({ 
+      username: { $regex: new RegExp(`^${trimmedUsername}$`, 'i') } 
+    });
 
     // Same vague message for both cases — prevents username enumeration
     if (!user) {
+      console.warn(`⚠️ Failed login attempt for non-existent user: '${trimmedUsername}' from IP: ${req.ip}`);
       return res.status(400).json({ error: 'Invalid username or password' });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
+      console.warn(`⚠️ Failed login attempt for user: '${user.username}' from IP: ${req.ip}`);
       return res.status(400).json({ error: 'Invalid username or password' });
     }
 

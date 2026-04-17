@@ -16,8 +16,9 @@ const authLimiter = rateLimit({
   message: { error: 'Too many attempts, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
-  onLimitReached: (req, res, options) => {
+  handler: (req, res, next, options) => {
     console.warn(`⚠️ Rate limit exceeded for IP: ${req.ip}, path: ${req.path}`);
+    res.status(options.statusCode).json(options.message);
   }
 });
 

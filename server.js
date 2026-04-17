@@ -297,7 +297,8 @@ io.on('connection', (socket) => {
       const newMessage = new Message({
         sender,
         message: sanitizedMessage.trim(),
-        isGlobal: true
+        isGlobal: true,
+        clientId: data.clientId
       });
       await newMessage.save();
 
@@ -305,7 +306,7 @@ io.on('connection', (socket) => {
         sender,
         message: sanitizedMessage.trim(),
         createdAt: newMessage.createdAt,
-        clientId: data?.clientId || null
+        clientId: newMessage.clientId
       });
 
     } catch (err) {
@@ -346,7 +347,8 @@ io.on('connection', (socket) => {
         sender,
         receiver,
         message: sanitizedMessage.trim(),
-        isGlobal: false
+        isGlobal: false,
+        clientId: data.clientId
       });
       await newMessage.save();
 
@@ -355,7 +357,7 @@ io.on('connection', (socket) => {
         message: sanitizedMessage.trim(),
         createdAt: newMessage.createdAt,
         room,
-        clientId: data?.clientId || null
+        clientId: newMessage.clientId
       });
 
     } catch (err) {

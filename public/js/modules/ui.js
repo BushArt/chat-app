@@ -117,7 +117,11 @@ export function appendMessage(containerId, sender, text, time, type, options = {
 
   if (container) {
     container.appendChild(bubble);
-    utils.maybeScrollToBottom(container);
+    if (type === "sent") {
+      utils.scrollToBottom(container);
+    } else {
+      utils.maybeScrollToBottom(container);
+    }
     updateJumpButton(container);
   }
   return bubble;
@@ -296,4 +300,10 @@ export function showChatScreen() {
 export function showAuthScreen() {
   dom.chatScreen.classList.add("hidden");
   dom.authScreen.classList.remove("hidden");
+}
+
+export function scrollPrivateToBottom() {
+  if (dom.privateMessages) {
+    utils.scrollToBottom(dom.privateMessages);
+  }
 }

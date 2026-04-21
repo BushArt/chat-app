@@ -46,6 +46,11 @@ export function resolveOptimistic(channel, incoming) {
       meta.textContent = utils.displayTime(incoming.createdAt, state.getTimeFormat());
       meta.title = utils.formatTime(incoming.createdAt);
     }
+
+    // Scroll after DOM update in case layout shifted
+    if (container) {
+      utils.maybeScrollToBottom(container);
+    }
   }
 
   return true;

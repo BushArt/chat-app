@@ -4,9 +4,19 @@ import * as state from './state.js';
 import * as utils from './utils.js';
 import * as ui from './ui.js';
 import * as optimistic from './optimistic.js';
-import * as api from './api.js';
 
-const socket = io({ autoConnect: false });
+function createNoopSocket() {
+  return {
+    auth: { token: null },
+    on: () => {},
+    emit: () => {},
+    connect: () => {},
+    disconnect: () => {}
+  };
+}
+
+const socket = typeof io === "function" ? io({ autoConnect: false }) : createNoopSocket();
+const hasSocketIoClient = typeof io === "function";
 
 // ---- Socket Event Listeners ----
 socket.on("receive_global_message", (data) => {
@@ -144,6 +154,10 @@ socket.on("connect_error", (err) => {
 
 // ---- Exported emit functions ----
 export function connect(token) {
+  if (!hasSocketIoClient) {
+    ui.setConnectionBanner("Connection issue: Socket.IO client failed to load.");
+    return;
+  }
   socket.auth = { token };
   socket.connect();
 }

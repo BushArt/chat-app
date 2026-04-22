@@ -4,6 +4,24 @@ import * as utils from './utils.js';
 
 let dom;
 
+function getDateKey(time) {
+  const date = new Date(time);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function appendDateSeparator(parent, container, time) {
+  const separator = document.createElement("p");
+  separator.classList.add("date-separator");
+  separator.textContent = utils.formatDateLabel(time);
+  parent.appendChild(separator);
+  if (container) {
+    container.dataset.lastDate = getDateKey(time);
+  }
+}
+
 export function initDom() {
   dom = {
     authScreen: document.getElementById("auth-screen"),
@@ -89,6 +107,12 @@ export function toggleTimeFormat() {
 export function appendMessage(containerId, sender, text, time, type, options = {}) {
   if (!sender || typeof text !== "string" || !time) return null;
   const container = containerId ? document.getElementById(containerId) : null;
+  if (container) {
+    const dateKey = getDateKey(time);
+    if (container.dataset.lastDate !== dateKey) {
+      appendDateSeparator(container, container, time);
+    }
+  }
   const bubble = document.createElement("div");
   bubble.classList.add("message", type);
   if (options.pending) bubble.classList.add("pending");
@@ -140,11 +164,21 @@ export function appendSystem(containerId, text) {
 export function appendHistoryBatch(containerId, history) {
   const container = document.getElementById(containerId);
   const fragment = document.createDocumentFragment();
+  let lastDate = container.dataset.lastDate || "";
   history.forEach((msg) => {
     if (!msg || typeof msg.message !== "string") return;
+    if (!msg.createdAt || Number.isNaN(new Date(msg.createdAt).getTime())) return;
+    const dateKey = getDateKey(msg.createdAt);
+    if (lastDate !== dateKey) {
+      appendDateSeparator(fragment, container, msg.createdAt);
+      lastDate = dateKey;
+    }
     const bubble = appendMessage(null, msg.sender, msg.message, msg.createdAt, msg.sender === state.getCurrentUser() ? "sent" : "received");
     fragment.appendChild(bubble);
   });
+  if (lastDate) {
+    container.dataset.lastDate = lastDate;
+  }
   container.appendChild(fragment);
   utils.scrollToBottom(container);
 }

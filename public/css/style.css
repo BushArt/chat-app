@@ -446,6 +446,27 @@ textarea:focus-visible { outline: 0; box-shadow: var(--focus); }
   margin: 4px 0;
 }
 
+.date-separator {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-soft);
+  margin: 12px 0 4px;
+  position: relative;
+}
+
+.date-separator::before,
+.date-separator::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 30%;
+  height: 1px;
+  background: var(--border);
+}
+
+.date-separator::before { left: 0; }
+.date-separator::after { right: 0; }
+
 .typing-indicator {
   font-size: 12px;
   color: var(--text-soft);
@@ -495,6 +516,37 @@ textarea:focus-visible { outline: 0; box-shadow: var(--focus); }
   max-height: 130px;
   overflow-y: auto;
   display: block;
+  scrollbar-width: none;
+}
+
+.input-area textarea:hover,
+.input-area textarea:focus {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(127, 137, 154, 0.5) transparent;
+}
+
+.input-area textarea::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.input-area textarea:hover::-webkit-scrollbar,
+.input-area textarea:focus::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.input-area textarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.input-area textarea::-webkit-scrollbar-thumb {
+  background: rgba(127, 137, 154, 0.5);
+  border-radius: 999px;
+}
+
+.input-area textarea::-webkit-scrollbar-thumb:hover {
+  background: rgba(127, 137, 154, 0.72);
 }
 
 .char-counter {

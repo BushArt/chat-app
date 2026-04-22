@@ -66,6 +66,7 @@ function logout() {
 // ---- History loading ----
 async function loadGlobalHistory() {
   dom.globalMessages.innerHTML = "";
+  delete dom.globalMessages.dataset.lastDate;
   try {
     const history = await api.fetchGlobalHistory();
     if (!Array.isArray(history) || history.length === 0) {
@@ -90,6 +91,7 @@ async function startChat() {
   state.setCurrentRoom(roomId);
   
   dom.privateMessages.innerHTML = "";
+  delete dom.privateMessages.dataset.lastDate;
   state.clearTypingState("private");
   ui.renderTyping("private");
   
@@ -100,9 +102,9 @@ async function startChat() {
     const history = await api.fetchPrivateHistory(state.getCurrentUser(), recipient);
     if (!Array.isArray(history) || history.length === 0) {
       ui.appendSystem("private-messages", "No messages yet. Say hello!");
-      return;
+    } else {
+      ui.appendHistoryBatch("private-messages", history);
     }
-    ui.appendHistoryBatch("private-messages", history);
 
     // Append any buffered messages
     const buffered = state.getBufferedMessages(roomId) || [];
@@ -252,7 +254,12 @@ function init() {
   dom.sendGlobal.addEventListener("click", sendGlobalMessage);
   dom.sendPrivate.addEventListener("click", sendPrivateMessage);
   dom.tabGlobal.addEventListener("click", () => ui.switchTab("global"));
-  dom.tabPrivate.addEventListener("click", () => ui.switchTab("private"));
+  dom.tabPrivate.addEventListener("click", () => {
+    ui.switchTab("private");
+    if (state.getCurrentRoom()) {
+      ui.scrollPrivateToBottom();
+    }
+  });
 
   ui.initTheme();
   ui.enableTabKeyboard();

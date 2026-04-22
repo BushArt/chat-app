@@ -46,6 +46,30 @@ export function displayTime(time, timeFormat) {
   return timeFormat === "relative" ? relativeTime(time) : formatTime(time);
 }
 
+export function isSameDay(timeA, timeB) {
+  const dateA = new Date(timeA);
+  const dateB = new Date(timeB);
+  return dateA.getFullYear() === dateB.getFullYear()
+    && dateA.getMonth() === dateB.getMonth()
+    && dateA.getDate() === dateB.getDate();
+}
+
+export function formatDateLabel(time) {
+  const date = new Date(time);
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const targetStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diffDays = Math.round((todayStart - targetStart) / 86400000);
+
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+
+  if (date.getFullYear() === now.getFullYear()) {
+    return date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  }
+  return date.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+}
+
 export function createClientId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }

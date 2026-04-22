@@ -25,16 +25,17 @@ router.get('/:user1/:user2', verifyToken, async (req, res) => {
     return res.status(403).json({ error: 'Forbidden' });
   }
   try {
-    const messages = await Message.find({
+    const recentMessages = await Message.find({
       isGlobal: false,
       $or: [
         { sender: user1, receiver: user2 },
         { sender: user2, receiver: user1 }
       ]
     })
-    .sort({ createdAt: 1 })
+    .sort({ createdAt: -1 })
     .limit(MAX_HISTORY_PRIVATE);
-    res.json(messages);
+    // Return chronological order to keep client rendering simple.
+    res.json(recentMessages.reverse());
   } catch (err) {
     res.status(500).json({ error: 'Could not fetch messages' });
   }

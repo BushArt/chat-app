@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+  <title>Chat App</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="socket.io/socket.io.js"></script>
+</head>
+<body>
+  <div id="auth-screen">
+    <h1>Chat App</h1>
+    <label class="field-label" for="username-input">Username / 用戶名</label>
+    <input type="text" id="username-input" placeholder="Username / 用戶名" autocomplete="username" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Username"/>
+    <label class="field-label" for="password-input">Password / 密碼</label>
+    <input type="password" id="password-input" placeholder="Password / 密碼" autocomplete="current-password" aria-label="Password"/>
+    <button id="btn-login" aria-label="Log in">Log In / 登入</button>
+    <button id="btn-register" aria-label="Create account">Create Account / 建立帳號</button>
+    <p id="auth-error" role="alert" aria-live="polite"></p>
+  </div>
+
+  <div id="chat-screen" class="hidden">
+    <div id="chat-header">
+      <span id="logged-in-as" aria-live="polite">Logged in as:</span>
+      <div id="header-actions">
+        <button id="btn-time-format" aria-label="Toggle time format">Time: Relative</button>
+        <button id="btn-theme-toggle" aria-label="Toggle dark mode">Theme</button>
+        <button id="btn-logout" aria-label="Log out">Log Out</button>
+      </div>
+    </div>
+    <div id="connection-banner" class="hidden" role="status" aria-live="polite"></div>
+
+    <div id="main-layout">
+      <div id="sidebar">
+        <div id="sidebar-title">Online Users</div>
+        <div id="online-list" role="listbox" aria-label="Online users"></div>
+      </div>
+
+      <div id="chat-area">
+        <div id="tabs" role="tablist" aria-label="Chat channels">
+          <button class="tab active" id="tab-global" role="tab" aria-controls="panel-global" aria-selected="true">
+            Global <span id="global-tab-badge"></span>
+          </button>
+          <button class="tab" id="tab-private" role="tab" aria-controls="panel-private" aria-selected="false">
+            Private <span id="private-tab-badge"></span>
+          </button>
+        </div>
+
+        <section class="tab-panel" id="panel-global" role="tabpanel" aria-labelledby="tab-global">
+          <div class="messages" id="global-messages" aria-live="polite"></div>
+          <div class="typing-indicator" id="global-typing" aria-live="polite"></div>
+          <div class="input-area">
+            <div class="input-wrapper">
+              <label class="visually-hidden" for="global-input">Message everyone</label>
+              <textarea id="global-input" placeholder="Message everyone... / 向所有人發訊息..." rows="1" aria-label="Global message input"></textarea>
+              <div class="char-counter" id="global-char-counter" aria-live="polite"></div>
+            </div>
+            <button id="send-global" class="send-btn btn-primary" disabled>Send</button>
+          </div>
+        </section>
+
+        <section class="tab-panel hidden" id="panel-private" role="tabpanel" aria-labelledby="tab-private">
+          <div id="recipient-bar">
+            <span id="recipient-label">Chat with:</span>
+            <label class="visually-hidden" for="recipient-input">Recipient username</label>
+            <input type="text" id="recipient-input" placeholder="Enter username..." autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Recipient username"/>
+            <button id="btn-open-chat" class="btn-primary">Open</button>
+          </div>
+          <div class="messages" id="private-messages" aria-live="polite"></div>
+          <div class="typing-indicator" id="private-typing" aria-live="polite"></div>
+          <div class="input-area">
+            <div class="input-wrapper">
+              <label class="visually-hidden" for="private-input">Private message</label>
+              <textarea id="private-input" placeholder="Type a message... / 輸入訊息..." rows="1" aria-label="Private message input"></textarea>
+              <div class="char-counter" id="private-char-counter" aria-live="polite"></div>
+            </div>
+            <button id="send-private" class="send-btn btn-primary" disabled>Send</button>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

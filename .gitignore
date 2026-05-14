@@ -1,0 +1,9 @@
+# Dependencies — recreated by running npm install
+node_modules/
+
+# Secrets — NEVER upload this
+.env
+
+# OS junk files
+.DS_Store
+Thumbs.db

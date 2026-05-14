@@ -1,0 +1,343 @@
+/* eslint-env browser */
+import * as state from './state.js';
+import * as utils from './utils.js';
+
+let dom;
+
+function getDateKey(time) {
+  const date = new Date(time);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function appendDateSeparator(parent, container, time) {
+  const separator = document.createElement("p");
+  separator.classList.add("date-separator");
+  separator.textContent = utils.formatDateLabel(time);
+  parent.appendChild(separator);
+  if (container) {
+    container.dataset.lastDate = getDateKey(time);
+  }
+}
+
+export function initDom() {
+  dom = {
+    authScreen: document.getElementById("auth-screen"),
+    chatScreen: document.getElementById("chat-screen"),
+    authError: document.getElementById("auth-error"),
+    usernameInput: document.getElementById("username-input"),
+    passwordInput: document.getElementById("password-input"),
+    loggedInAs: document.getElementById("logged-in-as"),
+    connectionBanner: document.getElementById("connection-banner"),
+    recipientInput: document.getElementById("recipient-input"),
+    globalInput: document.getElementById("global-input"),
+    privateInput: document.getElementById("private-input"),
+    globalCounter: document.getElementById("global-char-counter"),
+    privateCounter: document.getElementById("private-char-counter"),
+    sendGlobal: document.getElementById("send-global"),
+    sendPrivate: document.getElementById("send-private"),
+    btnTime: document.getElementById("btn-time-format"),
+    btnTheme: document.getElementById("btn-theme-toggle"),
+    tabGlobal: document.getElementById("tab-global"),
+    tabPrivate: document.getElementById("tab-private"),
+    panelGlobal: document.getElementById("panel-global"),
+    panelPrivate: document.getElementById("panel-private"),
+    badgeGlobal: document.getElementById("global-tab-badge"),
+    badgePrivate: document.getElementById("private-tab-badge"),
+    globalMessages: document.getElementById("global-messages"),
+    privateMessages: document.getElementById("private-messages"),
+    globalTyping: document.getElementById("global-typing"),
+    privateTyping: document.getElementById("private-typing"),
+    onlineList: document.getElementById("online-list"),
+    btnLogin: document.getElementById("btn-login"),
+    btnRegister: document.getElementById("btn-register"),
+    btnLogout: document.getElementById("btn-logout"),
+    btnOpenChat: document.getElementById("btn-open-chat")
+  };
+  return dom;
+}
+
+export function getDom() {
+  return dom;
+}
+
+export function refreshVisibleMeta() {
+  document.querySelectorAll(".message .meta[data-time]").forEach((meta) => {
+    const time = meta.getAttribute("data-time");
+    const sender = meta.getAttribute("data-sender") || "";
+    const isReceived = meta.getAttribute("data-type") === "received";
+    meta.textContent = (isReceived && sender ? sender + " · " : "") + utils.displayTime(time, state.getTimeFormat());
+    meta.title = utils.formatTime(time);
+  });
+}
+
+export function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  utils.safeLocalStorageSet("chat_theme", theme);
+  dom.btnTheme.textContent = theme === "dark" ? "Light Mode" : "Dark Mode";
+}
+
+export function initTheme() {
+  if (!state.FEATURE_FLAGS.darkMode) return;
+  const savedTheme = utils.safeLocalStorageGet("chat_theme");
+  const systemDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  applyTheme(savedTheme || (systemDark ? "dark" : "light"));
+}
+
+export function setConnectionBanner(text) {
+  if (!text) {
+    dom.connectionBanner.classList.add("hidden");
+    dom.connectionBanner.textContent = "";
+    return;
+  }
+  dom.connectionBanner.textContent = text;
+  dom.connectionBanner.classList.remove("hidden");
+}
+
+export function toggleTimeFormat() {
+  const newFormat = state.getTimeFormat() === "relative" ? "exact" : "relative";
+  state.setTimeFormat(newFormat);
+  utils.safeLocalStorageSet("chat_time_format", newFormat);
+  dom.btnTime.textContent = newFormat === "relative" ? "Time: Relative" : "Time: Exact";
+  refreshVisibleMeta();
+}
+
+export function appendMessage(containerId, sender, text, time, type, options = {}) {
+  if (!sender || typeof text !== "string" || !time) return null;
+  const container = containerId ? document.getElementById(containerId) : null;
+  if (container) {
+    const dateKey = getDateKey(time);
+    if (container.dataset.lastDate !== dateKey) {
+      appendDateSeparator(container, container, time);
+    }
+  }
+  const bubble = document.createElement("div");
+  bubble.classList.add("message", type);
+  if (options.pending) bubble.classList.add("pending");
+  if (options.clientId) bubble.dataset.clientId = options.clientId;
+
+  const textDiv = document.createElement("div");
+  textDiv.textContent = text;
+  bubble.appendChild(textDiv);
+
+  const copyBtn = document.createElement("button");
+  copyBtn.className = "copy-btn";
+  copyBtn.type = "button";
+  copyBtn.textContent = "Copy";
+  copyBtn.setAttribute("aria-label", "Copy message text");
+  copyBtn.onclick = () => utils.tryCopyText(text);
+  bubble.appendChild(copyBtn);
+
+  const metaDiv = document.createElement("div");
+  metaDiv.classList.add("meta");
+  metaDiv.setAttribute("data-time", time);
+  metaDiv.setAttribute("data-type", type);
+  metaDiv.setAttribute("data-sender", sender);
+  metaDiv.textContent = (type === "received" ? sender + " · " : "") + utils.displayTime(time, state.getTimeFormat());
+  metaDiv.title = utils.formatTime(time);
+  bubble.appendChild(metaDiv);
+
+  if (container) {
+    container.appendChild(bubble);
+    if (type === "sent") {
+      utils.scrollToBottom(container);
+    } else {
+      utils.maybeScrollToBottom(container);
+    }
+    updateJumpButton(container);
+  }
+  return bubble;
+}
+
+export function appendSystem(containerId, text) {
+  const container = document.getElementById(containerId);
+  const p = document.createElement("p");
+  p.classList.add("system-msg");
+  p.textContent = text;
+  container.appendChild(p);
+  utils.maybeScrollToBottom(container);
+  updateJumpButton(container);
+}
+
+export function appendHistoryBatch(containerId, history) {
+  const container = document.getElementById(containerId);
+  const fragment = document.createDocumentFragment();
+  let lastDate = container.dataset.lastDate || "";
+  history.forEach((msg) => {
+    if (!msg || typeof msg.message !== "string") return;
+    if (!msg.createdAt || Number.isNaN(new Date(msg.createdAt).getTime())) return;
+    const dateKey = getDateKey(msg.createdAt);
+    if (lastDate !== dateKey) {
+      appendDateSeparator(fragment, container, msg.createdAt);
+      lastDate = dateKey;
+    }
+    const bubble = appendMessage(null, msg.sender, msg.message, msg.createdAt, msg.sender === state.getCurrentUser() ? "sent" : "received");
+    fragment.appendChild(bubble);
+  });
+  if (lastDate) {
+    container.dataset.lastDate = lastDate;
+  }
+  container.appendChild(fragment);
+  utils.scrollToBottom(container);
+}
+
+export function updateCharCounter(textarea, counterEl, sendButton) {
+  const len = [...textarea.value].length;
+  const remaining = utils.MAX_LEN - len;
+  if (len > 0) {
+    counterEl.textContent = remaining + " left";
+    counterEl.className = "char-counter" + (remaining <= 50 ? " danger" : remaining <= 200 ? " warn" : "");
+  } else {
+    counterEl.textContent = "";
+    counterEl.className = "char-counter";
+  }
+  sendButton.disabled = len === 0 || remaining < 0;
+  textarea.setAttribute("aria-invalid", remaining < 0 ? "true" : "false");
+}
+
+export function renderTyping(channel) {
+  const el = channel === "global" ? dom.globalTyping : dom.privateTyping;
+  const users = state.getTypingUsers(channel);
+  if (users.length === 0) el.textContent = "";
+  else if (users.length === 1) el.textContent = users[0] + " is typing...";
+  else el.textContent = users.slice(0, 2).join(", ") + " are typing...";
+}
+
+export function switchTab(tab) {
+  state.setActiveTab(tab);
+  const isGlobal = tab === "global";
+  dom.panelGlobal.classList.toggle("hidden", !isGlobal);
+  dom.panelPrivate.classList.toggle("hidden", isGlobal);
+  dom.tabGlobal.classList.toggle("active", isGlobal);
+  dom.tabPrivate.classList.toggle("active", !isGlobal);
+  dom.tabGlobal.setAttribute("aria-selected", isGlobal ? "true" : "false");
+  dom.tabPrivate.setAttribute("aria-selected", isGlobal ? "false" : "true");
+
+  if (isGlobal) {
+    state.setUnreadGlobal(0);
+    dom.badgeGlobal.style.display = "none";
+    dom.badgeGlobal.textContent = "";
+  } else {
+    state.setUnreadPrivate(0);
+    if (dom.badgePrivate) {
+      dom.badgePrivate.style.display = "none";
+      dom.badgePrivate.textContent = "";
+    }
+  }
+}
+
+export function enableTabKeyboard() {
+  const tabs = [dom.tabGlobal, dom.tabPrivate];
+  tabs.forEach((tab, index) => {
+    tab.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+        event.preventDefault();
+        const next = event.key === "ArrowRight" ? (index + 1) % tabs.length : (index - 1 + tabs.length) % tabs.length;
+        tabs[next].focus();
+      }
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        tabs[index].click();
+      }
+    });
+  });
+}
+
+export function renderOnlineUsers(users) {
+  dom.onlineList.innerHTML = "";
+  if (!Array.isArray(users)) return;
+  const fragment = document.createDocumentFragment();
+  users.forEach((username) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.classList.add("online-user");
+    btn.setAttribute("role", "option");
+    btn.setAttribute("aria-label", "Start private chat with " + username);
+
+    const dot = document.createElement("span");
+    dot.classList.add("online-dot");
+
+    const name = document.createElement("span");
+    name.textContent = username;
+
+    btn.appendChild(dot);
+    btn.appendChild(name);
+    btn.onclick = () => {
+      if (username === state.getCurrentUser()) return;
+      dom.recipientInput.value = username;
+      switchTab("private");
+      
+      // Auto start chat when clicking online user
+      dom.recipientInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    };
+    btn.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        btn.click();
+      }
+    });
+    fragment.appendChild(btn);
+  });
+  dom.onlineList.appendChild(fragment);
+}
+
+export function ensureJumpButton(containerId) {
+  if (!state.FEATURE_FLAGS.jumpToLatest || state.hasJumpButton(containerId)) return;
+  const container = document.getElementById(containerId);
+  const btn = document.createElement("button");
+  btn.className = "jump-to-latest hidden";
+  btn.textContent = "New messages";
+  btn.type = "button";
+  btn.onclick = () => utils.scrollToBottom(container);
+  container.appendChild(btn);
+  state.setJumpButton(containerId, btn);
+}
+
+export function updateJumpButton(container) {
+  const btn = state.getJumpButton(container.id);
+  if (!btn) return;
+  if (utils.isNearBottom(container)) btn.classList.add("hidden");
+  else btn.classList.remove("hidden");
+}
+
+export function setupMessageContainer(container) {
+  ensureJumpButton(container.id);
+  container.addEventListener("scroll", () => updateJumpButton(container));
+}
+
+export function resetChatUi() {
+  [dom.globalMessages, dom.privateMessages, dom.onlineList].forEach((el) => {
+    el.innerHTML = "";
+  });
+  dom.recipientInput.value = "";
+  dom.globalInput.value = "";
+  dom.privateInput.value = "";
+  utils.autoResize(dom.globalInput);
+  utils.autoResize(dom.privateInput);
+  updateCharCounter(dom.globalInput, dom.globalCounter, dom.sendGlobal);
+  updateCharCounter(dom.privateInput, dom.privateCounter, dom.sendPrivate);
+  switchTab("global");
+}
+
+export function showAuthError(message, isSuccess = false) {
+  dom.authError.style.color = isSuccess ? "var(--ok)" : "var(--danger)";
+  dom.authError.textContent = message;
+}
+
+export function showChatScreen() {
+  dom.authScreen.classList.add("hidden");
+  dom.chatScreen.classList.remove("hidden");
+}
+
+export function showAuthScreen() {
+  dom.chatScreen.classList.add("hidden");
+  dom.authScreen.classList.remove("hidden");
+}
+
+export function scrollPrivateToBottom() {
+  if (dom.privateMessages) {
+    utils.scrollToBottom(dom.privateMessages);
+  }
+}

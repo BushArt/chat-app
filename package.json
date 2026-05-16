@@ -4,7 +4,29 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "coverageProvider": "v8",
+    "collectCoverageFrom": [
+      "sockets/state.js",
+      "public/js/modules/utils.js"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "statements": 70,
+        "branches": 70,
+        "functions": 45,
+        "lines": 70
+      }
+    },
+    "testMatch": [
+      "**/__tests__/**/*.test.js"
+    ]
   },
   "keywords": [],
   "author": "",
@@ -18,5 +40,10 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.3.3",
     "socket.io": "^4.8.3"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.29.0",
+    "@babel/preset-env": "^7.29.5",
+    "jest": "^30.4.2"
   }
 }

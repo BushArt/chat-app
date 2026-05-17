@@ -92,18 +92,9 @@ describe("makeRateLimiter factory", () => {
       limiter(); // starts the timer
       limiter.cleanup();
 
-      // Advance past the window — timer was cancelled so counter was never reset
+      // Advance past the window — cleanup cancelled the timer so it never fires
       jest.advanceTimersByTime(5000);
-
-      // With timer cleared, the counter was never reset.
-      // After 10+1 calls we're still over limit.
-      // Actually, cleanup doesn't reset count, just clears timer.
-      // After cleanup + advance, no reset occurs, so limiter still sees count=1.
-      // limiter() will check: resetTimer is null, so it starts a NEW timer.
-      // count becomes 2, allowed = true (2 <= 10).
-      // Let me just verify no crash and timer is not set.
-      const timerCountAfterCleanup = jest.getTimerCount();
-      expect(timerCountAfterCleanup).toBe(0);
+      expect(jest.getTimerCount()).toBe(0);
     });
 
     test("cleanup on unused limiter does not throw", () => {

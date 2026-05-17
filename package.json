@@ -13,7 +13,9 @@
     "testEnvironment": "node",
     "coverageProvider": "v8",
     "collectCoverageFrom": [
-      "sockets/state.js",
+      "middleware/**/*.js",
+      "models/**/*.js",
+      "sockets/**/*.js",
       "public/js/modules/utils.js"
     ],
     "coverageThreshold": {

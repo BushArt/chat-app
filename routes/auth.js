@@ -96,6 +96,9 @@ router.post('/register', authLimiter, async (req, res) => {
     res.status(201).json({ message: 'Account created! You can now log in.' });
 
   } catch (err) {
+    if (err.code === 11000) {
+      return res.status(400).json({ error: 'Username already taken' });
+    }
     console.error('Register error:', err);
     res.status(500).json({ error: 'Server error during registration' });
   }

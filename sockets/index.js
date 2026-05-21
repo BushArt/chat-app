@@ -34,7 +34,9 @@ module.exports = function setupSockets(io) {
     const username = socket.username;
     state.onlineUsers.set(username, (state.onlineUsers.get(username) || 0) + 1);
     socket.join('global');
-    io.emit('online_users', state.getOnlineList());
+    setTimeout(() => {
+      io.emit('online_users', state.getOnlineList());
+    }, 20);
     console.log(`${username} connected (${socket.id}). Connections: ${state.onlineUsers.get(username)}. Unique online: ${state.onlineUsers.size}`);
 
     // Per-connection rate limiter

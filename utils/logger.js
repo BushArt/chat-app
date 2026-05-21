@@ -6,10 +6,9 @@ if (process.env.NODE_ENV === 'test') {
     info: (...args) => console.log(...args),
     warn: (...args) => console.warn(...args),
     error: (...args) => console.error(...args),
-    debug: (...args) => console.debug ? console.debug(...args) : console.log(...args),
+    debug: (...args) => (console.debug ? console.debug(...args) : console.log(...args)),
     child: () => module.exports
   };
-  return;
 }
 
 const logger = createLogger({

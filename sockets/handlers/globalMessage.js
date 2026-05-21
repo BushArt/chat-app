@@ -50,7 +50,7 @@ module.exports = function createGlobalMessageHandler(io, socket, state, messageA
       io.to('global').emit('receive_global_message', payload);
 
     } catch (err) {
-      console.error('Global message error:', err);
+      logger.error({ event: 'global_message_error', err: String(err) });
       if (typeof ack === 'function') {
         try { ack({ status: 'error', message: String(err) }); } catch (e) {}
       }

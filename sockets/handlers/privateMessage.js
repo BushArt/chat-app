@@ -59,7 +59,7 @@ module.exports = function createPrivateMessageHandler(io, socket, state, message
       io.to(room).emit('receive_message', payload);
 
     } catch (err) {
-      console.error('Private message error:', err);
+      logger.error({ event: 'private_message_error', err: String(err) });
       if (typeof ack === 'function') {
         try { ack({ status: 'error', message: String(err) }); } catch (e) {}
       }

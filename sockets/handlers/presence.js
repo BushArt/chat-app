@@ -3,6 +3,8 @@
  * Join room logic and disconnect cleanup
  */
 
+const logger = require('../../utils/logger');
+
 module.exports = function createPresenceHandlers(io, socket, state, messageAllowed) {
 
   function handleJoinRoom(roomId) {
@@ -10,14 +12,14 @@ module.exports = function createPresenceHandlers(io, socket, state, messageAllow
     
     if (roomId === 'global') {
       socket.join(roomId);
-      console.log(`${socket.id} joined room: ${roomId}`);
+      logger.info({ event: 'join_room', socketId: socket.id, room: roomId });
       return;
     }
     
     const parts = roomId.split('_');
     if (parts.length === 2 && (parts[0] === socket.username || parts[1] === socket.username)) {
       socket.join(roomId);
-      console.log(`${socket.id} joined room: ${roomId}`);
+      logger.info({ event: 'join_room', socketId: socket.id, room: roomId });
     }
   }
 
@@ -30,7 +32,7 @@ module.exports = function createPresenceHandlers(io, socket, state, messageAllow
       if (remaining <= 0) {
         state.onlineUsers.delete(socket.username);
         io.emit('online_users', state.getOnlineList());
-        console.log(`${socket.username} fully offline`);
+        logger.info({ event: 'user_offline', username: socket.username });
 
         for (const [key, timeout] of state.typingTimeouts.entries()) {
           if (key.startsWith(`${socket.username}:`)) {
@@ -40,7 +42,7 @@ module.exports = function createPresenceHandlers(io, socket, state, messageAllow
         }
       } else {
         state.onlineUsers.set(socket.username, remaining);
-        console.log(`${socket.username} closed a tab (${remaining} connection(s) remaining)`);
+        logger.info({ event: 'closed_tab', username: socket.username, remaining });
       }
     }
   }

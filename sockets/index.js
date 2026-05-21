@@ -7,6 +7,7 @@ const jwt = require('jsonwebtoken');
 const makeRateLimiter = require('../middleware/rateLimiter');
 
 const state = require('./state');
+const logger = require('../utils/logger');
 const createPresenceHandlers = require('./handlers/presence');
 const createTypingHandlers = require('./handlers/typing');
 const createGlobalMessageHandler = require('./handlers/globalMessage');
@@ -40,7 +41,7 @@ module.exports = function setupSockets(io) {
     setTimeout(() => {
       io.emit('online_users', state.getOnlineList());
     }, 20);
-    console.log(`${username} connected (${socket.id}). Connections: ${state.onlineUsers.get(username)}. Unique online: ${state.onlineUsers.size}`);
+    logger.info({ event: 'socket_connect', username, socketId: socket.id, connections: state.onlineUsers.get(username), uniqueOnline: state.onlineUsers.size });
 
     // Per-connection rate limiter
     const messageAllowed = makeRateLimiter();

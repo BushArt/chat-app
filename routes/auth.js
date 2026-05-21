@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const logger = require('../utils/logger');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
@@ -22,7 +23,7 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res, next, options) => {
-    console.warn(`⚠️ Rate limit exceeded for IP: ${req.ip}, path: ${req.path}`);
+    logger.warn({ event: 'rate_limit', ip: req.ip, path: req.path });
     res.status(options.statusCode).json(options.message);
   }
 });
@@ -104,7 +105,7 @@ router.post('/register', authLimiter, async (req, res) => {
     if (err.code === 11000) {
       return res.status(400).json({ error: 'Username already taken' });
     }
-    console.error('Register error:', err);
+    logger.error({ event: 'register_error', err: String(err) });
     res.status(500).json({ error: 'Server error during registration' });
   }
 });
@@ -133,18 +134,18 @@ router.post('/login', authLimiter, async (req, res) => {
 
     // Same vague message for both cases — prevents username enumeration
     if (!user) {
-      console.warn(`⚠️ Failed login attempt for non-existent user: '${trimmedUsername}' from IP: ${req.ip}`);
+      logger.warn({ event: 'failed_login', username: trimmedUsername, ip: req.ip });
       return res.status(400).json({ error: 'Invalid username or password' });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      console.warn(`⚠️ Failed login attempt for user: '${user.username}' from IP: ${req.ip}`);
+      logger.warn({ event: 'failed_login', username: user.username, ip: req.ip });
       return res.status(400).json({ error: 'Invalid username or password' });
     }
 
     if (!process.env.JWT_SECRET) {
-      console.error('JWT_SECRET is not set');
+      logger.error({ event: 'jwt_missing' });
       return res.status(500).json({ error: 'Server configuration error' });
     }
 
@@ -157,7 +158,7 @@ router.post('/login', authLimiter, async (req, res) => {
     res.json({ token, username: user.username });
 
   } catch (err) {
-    console.error('Login error:', err);
+    logger.error({ event: 'login_error', err: String(err) });
     res.status(500).json({ error: 'Server error during login' });
   }
 });

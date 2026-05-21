@@ -3,9 +3,11 @@ const mongoose = require('mongoose');
 async function connectDatabase() {
   try {
     await mongoose.connect(process.env.MONGO_URI);
-    console.log('✅ Connected to MongoDB');
+    const logger = require('../utils/logger');
+    logger.info({ event: 'db_connected' });
   } catch (err) {
-    console.error('❌ MongoDB connection failed:', err.message);
+    const logger = require('../utils/logger');
+    logger.error({ event: 'db_connection_failed', err: String(err) });
     throw err;
   }
 }

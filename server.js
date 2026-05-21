@@ -59,7 +59,8 @@ connectDatabase()
   .then(() => {
     const PORT = process.env.PORT || 3000;
     server.listen(PORT, () => {
-      console.log(`✅ Server running at http://localhost:${PORT}`);
+      const logger = require('./utils/logger');
+      logger.info({ event: 'server_started', url: `http://localhost:${PORT}` });
     });
   })
   .catch(() => {

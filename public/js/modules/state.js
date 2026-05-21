@@ -134,4 +134,5 @@ export function resetAllState() {
   clearOptimisticChannel("private");
   clearMessageBuffer();
   clearAllOptimisticTimeouts();
+  Object.keys(jumpButtons).forEach(key => delete jumpButtons[key]);
 }

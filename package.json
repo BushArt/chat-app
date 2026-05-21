@@ -9,15 +9,39 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
   },
-  "jest": {
-    "testEnvironment": "node",
+    "jest": {
+    "projects": [
+      {
+        "displayName": "server",
+        "testEnvironment": "node",
+        "testMatch": [
+          "**/__tests__/unit/**/*.test.js",
+          "**/__tests__/integration/**/*.test.js"
+        ],
+        "testPathIgnorePatterns": [
+          "/__tests__/unit/public/"
+        ]
+      },
+      {
+        "displayName": "client",
+        "testEnvironment": "jsdom",
+        "testMatch": [
+          "**/__tests__/unit/public/**/*.test.js"
+        ]
+      }
+    ],
     "coverageProvider": "v8",
     "collectCoverageFrom": [
       "middleware/**/*.js",
       "models/**/*.js",
       "routes/**/*.js",
       "sockets/**/*.js",
-      "public/js/modules/utils.js"
+      "public/js/modules/utils.js",
+      "public/js/modules/state.js",
+      "public/js/modules/api.js",
+      "public/js/modules/optimistic.js",
+      "public/js/modules/ui.js",
+      "public/js/modules/socket.js"
     ],
     "testTimeout": 10000,
     "coverageThreshold": {
@@ -27,10 +51,7 @@
         "functions": 45,
         "lines": 70
       }
-    },
-    "testMatch": [
-      "**/__tests__/**/*.test.js"
-    ]
+    }
   },
   "keywords": [],
   "author": "",
@@ -49,6 +70,7 @@
     "@babel/core": "^7.29.0",
     "@babel/preset-env": "^7.29.5",
     "jest": "^30.4.2",
+    "jest-environment-jsdom": "^30.4.1",
     "socket.io-client": "^4.8.3",
     "supertest": "^7.2.2"
   }

@@ -19,6 +19,7 @@
       "sockets/**/*.js",
       "public/js/modules/utils.js"
     ],
+    "testTimeout": 10000,
     "coverageThreshold": {
       "global": {
         "statements": 70,
@@ -48,6 +49,7 @@
     "@babel/core": "^7.29.0",
     "@babel/preset-env": "^7.29.5",
     "jest": "^30.4.2",
+    "socket.io-client": "^4.8.3",
     "supertest": "^7.2.2"
   }
 }

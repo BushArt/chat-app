@@ -9,9 +9,9 @@ const MAX_HISTORY_PRIVATE = 50;
 router.get('/global', verifyToken, async (req, res) => {
   try {
     const messages = await Message.find({ isGlobal: true })
-      .sort({ createdAt: 1 })
+      .sort({ createdAt: -1 })
       .limit(MAX_HISTORY_GLOBAL);
-    res.json(messages);
+    res.json(messages.reverse());
   } catch (err) {
     res.status(500).json({ error: 'Could not fetch global messages' });
   }

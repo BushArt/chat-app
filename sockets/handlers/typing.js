@@ -14,7 +14,7 @@ module.exports = function createTypingHandlers(io, socket, state) {
 
     clearTimeout(state.typingTimeouts.get(key));
     
-    if (state.typingTimeouts.size >= state.MAX_TYPING_ENTRIES) {
+    while (state.typingTimeouts.size >= state.MAX_TYPING_ENTRIES) {
       const oldestKey = state.typingTimeouts.keys().next().value;
       const oldestTimeout = state.typingTimeouts.get(oldestKey);
       clearTimeout(oldestTimeout);

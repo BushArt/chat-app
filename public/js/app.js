@@ -138,7 +138,8 @@ function sendGlobalMessage() {
     
     const pending = document.querySelector(`#global-messages .message.pending[data-client-id="${clientId}"]`);
     if (!pending) return;
-    
+    // Remove pending DOM so a late server delivery won't conflict
+    pending.remove();
     optimistic.clearOptimisticPending("global", clientId);
     ui.appendSystem("global-messages", "Message failed to send. Please try again.");
   }, utils.OPTIMISTIC_TIMEOUT);
@@ -178,7 +179,8 @@ function sendPrivateMessage() {
     
     const pending = document.querySelector(`#private-messages .message.pending[data-client-id="${clientId}"]`);
     if (!pending) return;
-    
+    // Remove pending DOM element to avoid late-ACK conflicts
+    pending.remove();
     optimistic.clearOptimisticPending("private", clientId);
     ui.appendSystem("private-messages", "Message failed to send. Please try again.");
   }, utils.OPTIMISTIC_TIMEOUT);

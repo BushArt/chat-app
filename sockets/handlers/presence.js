@@ -25,7 +25,8 @@ module.exports = function createPresenceHandlers(io, socket, state, messageAllow
     messageAllowed.cleanup();
     
     if (socket.username) {
-      const remaining = (state.onlineUsers.get(socket.username) || 1) - 1;
+      let remaining = (Number(state.onlineUsers.get(socket.username)) || 1) - 1;
+      if (remaining < 0) remaining = 0;
       if (remaining <= 0) {
         state.onlineUsers.delete(socket.username);
         io.emit('online_users', state.getOnlineList());

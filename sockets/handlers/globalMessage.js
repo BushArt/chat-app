@@ -6,7 +6,7 @@ const Message = require('../../models/Message');
 
 module.exports = function createGlobalMessageHandler(io, socket, state, messageAllowed) {
 
-  return async function handleSendGlobalMessage(data) {
+  return async function handleSendGlobalMessage(data, ack) {
     const sender = socket.username;
     if (!sender) return;
     if (!messageAllowed()) {
@@ -35,15 +35,25 @@ module.exports = function createGlobalMessageHandler(io, socket, state, messageA
       });
       await newMessage.save();
 
-      io.to('global').emit('receive_global_message', {
+      const payload = {
         sender,
         message: sanitizedMessage.trim(),
         createdAt: newMessage.createdAt,
         clientId: newMessage.clientId
-      });
+      };
+
+      // Ack the sender if still connected
+      if (socket && socket.connected && typeof ack === 'function') {
+        try { ack({ status: 'saved', id: newMessage._id }); } catch (e) { /* swallow ack errors */ }
+      }
+
+      io.to('global').emit('receive_global_message', payload);
 
     } catch (err) {
       console.error('Global message error:', err);
+      if (typeof ack === 'function') {
+        try { ack({ status: 'error', message: String(err) }); } catch (e) {}
+      }
     }
   };
 };

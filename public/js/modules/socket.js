@@ -125,6 +125,22 @@ socket.on("connect", () => {
   ui.setConnectionBanner("");
 });
 
+// On reconnect, ask server for missed messages (best-effort)
+socket.on('reconnect', () => {
+  try {
+    // try to determine last seen message timestamp from DOM
+    const list = document.querySelector('#global-messages');
+    let lastSeen = null;
+    if (list) {
+      const last = list.querySelector('.message .meta[data-time]');
+      if (last) lastSeen = last.dataset.time || null;
+    }
+    socket.emit('sync', { lastSeenAt: lastSeen });
+  } catch (e) {
+    // best-effort only
+  }
+});
+
 socket.on("disconnect", () => {
   ui.setConnectionBanner("Disconnected. Reconnecting...");
   // Clear sending flags on disconnect to prevent permanent lockup

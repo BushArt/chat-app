@@ -12,15 +12,9 @@ function makeRateLimiter() {
         resetTimer = null;
       }, RATE_LIMIT_WINDOW);
     }
+    // Increment then compare (atomic-style within this event loop)
     count++;
-    const allowed = count <= RATE_LIMIT_MAX;
-    
-    // Race condition protection: if timer fired after we incremented but before return
-    if (resetTimer === null && count > 1) {
-      count = 1;
-    }
-    
-    return allowed;
+    return count <= RATE_LIMIT_MAX;
   };
   
   isAllowed.cleanup = function() {

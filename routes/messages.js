@@ -1,12 +1,28 @@
 const express = require('express');
 const router = express.Router();
+const makeRateLimiter = require('../middleware/rateLimiter');
+
+// Small per-IP express middleware using in-memory limiter instances
+function rateLimitMiddleware(req, res, next) {
+  try {
+    if (!req.app.locals._rateLimiters) req.app.locals._rateLimiters = new Map();
+    const ip = req.ip || req.connection.remoteAddress || 'anonymous';
+    const map = req.app.locals._rateLimiters;
+    if (!map.has(ip)) map.set(ip, makeRateLimiter());
+    const limiter = map.get(ip);
+    if (!limiter()) return res.status(429).json({ error: 'Too many requests' });
+    return next();
+  } catch (err) {
+    return next();
+  }
+}
 const Message = require('../models/Message');
 const verifyToken = require('../middleware/auth');
 
 const MAX_HISTORY_GLOBAL = 100;
 const MAX_HISTORY_PRIVATE = 50;
 
-router.get('/global', verifyToken, async (req, res) => {
+router.get('/global', rateLimitMiddleware, verifyToken, async (req, res) => {
   try {
     const messages = await Message.find({ isGlobal: true })
       .sort({ createdAt: -1 })

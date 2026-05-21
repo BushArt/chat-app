@@ -6,7 +6,7 @@ const Message = require('../../models/Message');
 
 module.exports = function createPrivateMessageHandler(io, socket, state, messageAllowed) {
 
-  return async function handleSendPrivateMessage(data) {
+  return async function handleSendPrivateMessage(data, ack) {
     const sender = socket.username;
     if (!sender) return;
     if (!messageAllowed()) {
@@ -44,16 +44,25 @@ module.exports = function createPrivateMessageHandler(io, socket, state, message
       });
       await newMessage.save();
 
-      io.to(room).emit('receive_message', {
+      const payload = {
         sender,
         message: sanitizedMessage.trim(),
         createdAt: newMessage.createdAt,
         room,
         clientId: newMessage.clientId
-      });
+      };
+
+      if (socket && socket.connected && typeof ack === 'function') {
+        try { ack({ status: 'saved', id: newMessage._id }); } catch (e) {}
+      }
+
+      io.to(room).emit('receive_message', payload);
 
     } catch (err) {
       console.error('Private message error:', err);
+      if (typeof ack === 'function') {
+        try { ack({ status: 'error', message: String(err) }); } catch (e) {}
+      }
     }
   };
 };

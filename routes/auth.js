@@ -5,6 +5,11 @@ const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const User = require('../models/User');
 
+// Escape user input before constructing RegExp to avoid regex injection
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // ─────────────────────────────────────────
 // RATE LIMITER
 // Max 10 attempts per IP per 15 minutes
@@ -76,7 +81,7 @@ router.post('/register', authLimiter, async (req, res) => {
     }
 
     const existingUser = await User.findOne({ 
-      username: { $regex: new RegExp(`^${trimmedUsername}$`, 'i') } 
+      username: { $regex: new RegExp(`^${escapeRegExp(trimmedUsername)}$`, 'i') } 
     });
     
     if (existingUser) {
@@ -123,7 +128,7 @@ router.post('/login', authLimiter, async (req, res) => {
     }
 
     const user = await User.findOne({ 
-      username: { $regex: new RegExp(`^${trimmedUsername}$`, 'i') } 
+      username: { $regex: new RegExp(`^${escapeRegExp(trimmedUsername)}$`, 'i') } 
     });
 
     // Same vague message for both cases — prevents username enumeration

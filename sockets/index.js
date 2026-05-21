@@ -34,10 +34,12 @@ module.exports = function setupSockets(io) {
     const username = socket.username;
     state.onlineUsers.set(username, (state.onlineUsers.get(username) || 0) + 1);
     socket.join('global');
-    // Ensure the newly connected socket always receives the current online list
-    // and broadcast the update to all other clients immediately.
-    socket.emit('online_users', state.getOnlineList());
-    socket.broadcast.emit('online_users', state.getOnlineList());
+    // Emit online user list after a short delay so clients have time to
+    // register their `online_users` listener and avoid a race in tests
+    // and real clients attaching handlers during connect.
+    setTimeout(() => {
+      io.emit('online_users', state.getOnlineList());
+    }, 20);
     console.log(`${username} connected (${socket.id}). Connections: ${state.onlineUsers.get(username)}. Unique online: ${state.onlineUsers.size}`);
 
     // Per-connection rate limiter

@@ -15,14 +15,17 @@ module.exports = function createPrivateMessageHandler(io, socket, state, message
     }
 
     const message = data?.message;
-    const receiver = data?.receiver;
-    const room = data?.room;
+    const receiver = typeof data?.receiver === 'string' ? data.receiver.trim() : null;
+    const room = typeof data?.room === 'string' ? data.room : null;
 
     if (!message || typeof message !== 'string') return;
     if ([...message.trim()].length === 0) return;
     if ([...message].length > state.MAX_MESSAGE_LENGTH) return;
-    if (!receiver || typeof receiver !== 'string') return;
-    if (!room || typeof room !== 'string') return;
+    if (!receiver) return;
+    if (!room) return;
+
+    const expectedRoom = [sender, receiver].sort().join('_');
+    if (room !== expectedRoom) return;
 
     const sanitizedMessage = message.replace(/<[^>]*>/g, '');
 

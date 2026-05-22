@@ -54,7 +54,9 @@ module.exports = function createPrivateMessageHandler(io, socket, state, message
       };
 
       if (socket && socket.connected && typeof ack === 'function') {
-        try { ack({ status: 'saved', id: newMessage._id }); } catch (e) {}
+        try { ack({ status: 'saved', id: newMessage._id }); } catch (e) {
+          logger.error({ event: 'ack_error', context: 'private_message', err: String(e), username: sender, room });
+        }
       }
 
       io.to(room).emit('receive_message', payload);
@@ -62,7 +64,9 @@ module.exports = function createPrivateMessageHandler(io, socket, state, message
     } catch (err) {
       logger.error({ event: 'private_message_error', err: String(err) });
       if (typeof ack === 'function') {
-        try { ack({ status: 'error', message: String(err) }); } catch (e) {}
+        try { ack({ status: 'error', message: String(err) }); } catch (e) {
+          logger.error({ event: 'ack_error', context: 'private_message_error_ack', err: String(e), username: sender, room });
+        }
       }
     }
   };

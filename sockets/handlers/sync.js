@@ -22,7 +22,9 @@ module.exports = function createSyncHandler(io, socket, state, messageAllowed) {
       if (typeof messageAllowed === 'function' && !messageAllowed()) {
         socket.emit('error_message', { error: 'Too many requests' });
         if (typeof ack === 'function') {
-          try { ack({ status: 'error', message: 'rate_limited' }); } catch (e) {}
+          try { ack({ status: 'error', message: 'rate_limited' }); } catch (e) {
+            logger.error({ event: 'ack_error', context: 'sync_rate_limited', err: String(e), username });
+          }
         }
         return;
       }
@@ -43,7 +45,9 @@ module.exports = function createSyncHandler(io, socket, state, messageAllowed) {
 
       if (!peer && !room) {
         if (typeof ack === 'function') {
-          try { ack({ status: 'error', message: 'missing_with_or_room' }); } catch (e) {}
+          try { ack({ status: 'error', message: 'missing_with_or_room' }); } catch (e) {
+            logger.error({ event: 'ack_error', context: 'sync_missing_with_or_room', err: String(e), username });
+          }
         }
         return;
       }
@@ -54,7 +58,9 @@ module.exports = function createSyncHandler(io, socket, state, messageAllowed) {
         const parts = expectedRoom.split('_');
         if (parts.length !== 2 || !parts.includes(username)) {
           if (typeof ack === 'function') {
-            try { ack({ status: 'error', message: 'invalid_room' }); } catch (e) {}
+            try { ack({ status: 'error', message: 'invalid_room' }); } catch (e) {
+              logger.error({ event: 'ack_error', context: 'sync_invalid_room', err: String(e), username });
+            }
           }
           return;
         }
@@ -63,7 +69,9 @@ module.exports = function createSyncHandler(io, socket, state, messageAllowed) {
 
       if (otherUser && otherUser === username) {
         if (typeof ack === 'function') {
-          try { ack({ status: 'error', message: 'invalid_peer' }); } catch (e) {}
+          try { ack({ status: 'error', message: 'invalid_peer' }); } catch (e) {
+            logger.error({ event: 'ack_error', context: 'sync_invalid_peer', err: String(e), username });
+          }
         }
         return;
       }
@@ -95,18 +103,24 @@ module.exports = function createSyncHandler(io, socket, state, messageAllowed) {
         }));
 
         payloads.forEach((payload) => {
-          try { socket.emit('receive_message', payload); } catch (e) {}
+          try { socket.emit('receive_message', payload); } catch (e) {
+            logger.error({ event: 'emit_error', context: 'sync_private_emit', err: String(e), username, peer: otherUser });
+          }
         });
 
         logger.info({ event: 'sync', type: 'private', username, peer: otherUser, room: expectedRoom, lastSeenAt: lastSeen ? lastSeen.toISOString() : null, count: payloads.length });
         if (typeof ack === 'function') {
-          try { ack({ status: 'ok', count: payloads.length }); } catch (e) {}
+          try { ack({ status: 'ok', count: payloads.length }); } catch (e) {
+            logger.error({ event: 'ack_error', context: 'sync_private_ok_ack', err: String(e), username });
+          }
         }
       } catch (err) {
         logger.error({ event: 'sync_error', type: 'private', err: String(err), username });
         socket.emit('error_message', { error: 'Could not sync private messages' });
         if (typeof ack === 'function') {
-          try { ack({ status: 'error', message: String(err) }); } catch (e) {}
+          try { ack({ status: 'error', message: String(err) }); } catch (e) {
+            logger.error({ event: 'ack_error', context: 'sync_private_error_ack', err: String(e), username });
+          }
         }
       }
       return;
@@ -123,18 +137,24 @@ module.exports = function createSyncHandler(io, socket, state, messageAllowed) {
 
       const payloads = docs.map((doc) => ({ sender: doc.sender, message: doc.message, createdAt: doc.createdAt, clientId: doc.clientId, id: doc._id }));
       payloads.forEach((payload) => {
-        try { socket.emit('receive_global_message', payload); } catch (e) {}
+        try { socket.emit('receive_global_message', payload); } catch (e) {
+          logger.error({ event: 'emit_error', context: 'sync_global_emit', err: String(e), username });
+        }
       });
 
       logger.info({ event: 'sync', type: 'global', username, lastSeenAt: lastSeen ? lastSeen.toISOString() : null, count: payloads.length });
       if (typeof ack === 'function') {
-        try { ack({ status: 'ok', count: payloads.length }); } catch (e) {}
+        try { ack({ status: 'ok', count: payloads.length }); } catch (e) {
+          logger.error({ event: 'ack_error', context: 'sync_global_ok_ack', err: String(e), username });
+        }
       }
     } catch (err) {
       logger.error({ event: 'sync_error', type: 'global', err: String(err), username });
       socket.emit('error_message', { error: 'Could not sync messages' });
       if (typeof ack === 'function') {
-        try { ack({ status: 'error', message: String(err) }); } catch (e) {}
+        try { ack({ status: 'error', message: String(err) }); } catch (e) {
+          logger.error({ event: 'ack_error', context: 'sync_global_error_ack', err: String(e), username });
+        }
       }
     }
   };

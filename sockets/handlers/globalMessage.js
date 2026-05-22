@@ -45,7 +45,9 @@ module.exports = function createGlobalMessageHandler(io, socket, state, messageA
 
       // Ack the sender if still connected
       if (socket && socket.connected && typeof ack === 'function') {
-        try { ack({ status: 'saved', id: newMessage._id }); } catch (e) { /* swallow ack errors */ }
+        try { ack({ status: 'saved', id: newMessage._id }); } catch (e) {
+          logger.error({ event: 'ack_error', context: 'global_message', err: String(e), username: sender });
+        }
       }
 
       io.to('global').emit('receive_global_message', payload);
@@ -53,7 +55,9 @@ module.exports = function createGlobalMessageHandler(io, socket, state, messageA
     } catch (err) {
       logger.error({ event: 'global_message_error', err: String(err) });
       if (typeof ack === 'function') {
-        try { ack({ status: 'error', message: String(err) }); } catch (e) {}
+        try { ack({ status: 'error', message: String(err) }); } catch (e) {
+          logger.error({ event: 'ack_error', context: 'global_message_error_ack', err: String(e), username: sender });
+        }
       }
     }
   };

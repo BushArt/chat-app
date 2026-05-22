@@ -1,4 +1,9 @@
-# Dependencies — recreated by running npm install
+node_modules/
+.env
+coverage/
+/.vscode/
+npm-debug.log
+dist/# Dependencies — recreated by running npm install
 node_modules/
 
 # Secrets — NEVER upload this

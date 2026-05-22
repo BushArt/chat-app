@@ -273,6 +273,33 @@ describe("Socket.IO integration", () => {
 
       await new Promise((r) => setTimeout(r, 200));
     });
+
+    test("sync: reconnecting client receives missed global messages and ack", async () => {
+      // Prepare messages created after lastSeenAt
+      const lastSeenAt = new Date('2026-05-01T00:00:00Z');
+      const docs = [
+        { sender: 'bob', message: 'later', createdAt: new Date('2026-05-02T00:00:00Z'), clientId: 'c1', _id: 'm1' },
+        { sender: 'carol', message: 'soon', createdAt: new Date('2026-05-03T00:00:00Z'), clientId: 'c2', _id: 'm2' }
+      ];
+
+      // Make Message.find() return a chainable query like in other tests
+      Message.find = jest.fn().mockReturnValue({ sort: jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue(docs) });
+
+      const client = track(await connectAndWait(port, "valid-jwt"));
+
+      const msgPromise1 = waitForEvent(client, 'receive_global_message');
+      const msgPromise2 = waitForEvent(client, 'receive_global_message');
+
+      const ackPromise = new Promise((resolve) => {
+        client.emit('sync', { lastSeenAt: lastSeenAt.toISOString() }, (ack) => resolve(ack));
+      });
+
+      const [m1, m2, ack] = await Promise.all([msgPromise1, msgPromise2, ackPromise]);
+
+      expect(m1).toHaveProperty('message');
+      expect(m2).toHaveProperty('message');
+      expect(ack).toEqual({ status: 'ok', count: docs.length });
+    });
   });
 
   // -------------------------------------------------------------------

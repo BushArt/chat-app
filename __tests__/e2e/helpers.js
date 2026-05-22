@@ -7,6 +7,22 @@ const request = require('supertest');
 const ioClient = require('socket.io-client');
 const mongoose = require('mongoose');
 
+const baseTestUri = process.env.TEST_MONGO_URI || process.env.MONGO_URI;
+const jestWorkerId = process.env.JEST_WORKER_ID;
+
+function buildWorkerTestUri(uri, workerId) {
+  if (!uri || !workerId) return uri;
+  const [connectionString, query = ''] = uri.split('?');
+  const match = connectionString.match(/^(mongodb(?:\+srv)?:\/\/[^/]+)(?:\/(.*))?$/);
+  if (!match) return uri;
+  const prefix = match[1];
+  const dbName = match[2] ? match[2] : 'test';
+  const workerDb = `${dbName}_worker${workerId}`;
+  return query ? `${prefix}/${workerDb}?${query}` : `${prefix}/${workerDb}`;
+}
+
+process.env.TEST_MONGO_URI = buildWorkerTestUri(baseTestUri, jestWorkerId);
+
 const { app, server, io, connectDatabase } = require('../../app');
 const state = require('../../sockets/state');
 const User = require('../../models/User');
@@ -15,6 +31,7 @@ const Message = require('../../models/Message');
 async function startE2EServer() {
   process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
   await connectDatabase();
+  await mongoose.connection.dropDatabase();
 
   await new Promise((resolve, reject) => {
     server.listen(0, (err) => {

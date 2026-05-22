@@ -38,7 +38,8 @@
         ],
         "globalSetup": "<rootDir>/__tests__/e2e/globalSetup.js",
         "globalTeardown": "<rootDir>/__tests__/e2e/globalTeardown.js",
-        "testTimeout": 30000
+        "testTimeout": 30000,
+        "maxWorkers": 1
       }
     ],
     "coverageProvider": "v8",

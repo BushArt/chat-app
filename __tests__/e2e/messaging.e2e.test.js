@@ -1,6 +1,6 @@
 jest.setTimeout(30000);
 
-const { startE2EServer, stopE2EServer, waitForEvent, connectAndWait, state, User, Message } = require('./helpers');
+const { startE2EServer, stopE2EServer, waitForEvent, connectAndWait, connectSocket, state, User, Message } = require('./helpers');
 
 let api;
 let app;
@@ -48,7 +48,7 @@ async function registerAndLogin(username) {
 }
 
 async function createConnectedClient(token) {
-  const client = trackClient(await connectAndWait(port, token));
+  const client = trackClient(connectSocket(port, token));
   return client;
 }
 
@@ -62,7 +62,7 @@ describe('global messaging end-to-end', () => {
 
     const aliceOnline = waitForEvent(alice, 'online_users');
     const bobOnline = waitForEvent(bob, 'online_users');
-    await Promise.all([aliceOnline, bobOnline]);
+    await Promise.all([waitForEvent(alice, 'connect'), waitForEvent(bob, 'connect'), aliceOnline, bobOnline]);
 
     const aliceReceived = waitForEvent(alice, 'receive_global_message');
     const bobReceived = waitForEvent(bob, 'receive_global_message');
@@ -97,6 +97,9 @@ describe('private messaging end-to-end', () => {
     const charlie = await createConnectedClient(charlieToken);
 
     const room = ['alice', 'bob'].sort().join('_');
+    const connectPromises = [waitForEvent(alice, 'connect'), waitForEvent(bob, 'connect'), waitForEvent(charlie, 'connect')];
+    await Promise.all(connectPromises);
+
     alice.emit('join_room', room);
     bob.emit('join_room', room);
 
@@ -182,18 +185,24 @@ describe('history limits end-to-end', () => {
 describe('presence end-to-end', () => {
   test('emits online_users including connected username', async () => {
     const aliceToken = await registerAndLogin('alice');
-    const alice = await createConnectedClient(aliceToken);
+    const alice = trackClient(connectSocket(port, aliceToken));
 
-    const onlineUsers = await waitForEvent(alice, 'online_users');
+    const onlineUsersPromise = waitForEvent(alice, 'online_users');
+    await waitForEvent(alice, 'connect');
+    const onlineUsers = await onlineUsersPromise;
+
     expect(Array.isArray(onlineUsers)).toBe(true);
     expect(onlineUsers).toContain('alice');
   });
 
   test('removes username from online_users after disconnect', async () => {
     const aliceToken = await registerAndLogin('alice');
-    const alice = await createConnectedClient(aliceToken);
+    const alice = trackClient(connectSocket(port, aliceToken));
 
-    await waitForEvent(alice, 'online_users');
+    const onlineUsersPromise = waitForEvent(alice, 'online_users');
+    await waitForEvent(alice, 'connect');
+    await onlineUsersPromise;
+
     alice.close();
     await new Promise((resolve) => setTimeout(resolve, 300));
 

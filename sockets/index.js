@@ -39,9 +39,10 @@ module.exports = function setupSockets(io) {
     // Emit online user list after a short delay so clients have time to
     // register their `online_users` listener and avoid a race in tests
     // and real clients attaching handlers during connect.
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       io.emit('online_users', state.getOnlineList());
-    }, 20);
+    }, 100);
+    timer.unref();
     logger.info({ event: 'socket_connect', username, socketId: socket.id, connections: state.onlineUsers.get(username), uniqueOnline: state.onlineUsers.size });
 
     // Per-connection rate limiter

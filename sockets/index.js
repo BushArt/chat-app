@@ -12,6 +12,7 @@ const createPresenceHandlers = require('./handlers/presence');
 const createTypingHandlers = require('./handlers/typing');
 const createGlobalMessageHandler = require('./handlers/globalMessage');
 const createPrivateMessageHandler = require('./handlers/privateMessage');
+const createSyncHandler = require('./handlers/sync');
 
 module.exports = function setupSockets(io) {
 
@@ -51,6 +52,7 @@ module.exports = function setupSockets(io) {
     const { handleStartTyping, handleStopTyping } = createTypingHandlers(io, socket, state);
     const handleSendGlobalMessage = createGlobalMessageHandler(io, socket, state, messageAllowed);
     const handleSendPrivateMessage = createPrivateMessageHandler(io, socket, state, messageAllowed);
+    const handleSync = createSyncHandler(io, socket, state, messageAllowed);
 
     // Register event listeners
     socket.on('join_room', handleJoinRoom);
@@ -58,6 +60,7 @@ module.exports = function setupSockets(io) {
     socket.on('stop_typing', handleStopTyping);
     socket.on('send_global_message', handleSendGlobalMessage);
     socket.on('send_message', handleSendPrivateMessage);
+    socket.on('sync', handleSync);
     socket.on('disconnect', handleDisconnect);
   });
 };

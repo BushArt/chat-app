@@ -48,6 +48,7 @@
       "models/**/*.js",
       "routes/**/*.js",
       "sockets/**/*.js",
+      "config/**/*.js",
       "public/js/modules/utils.js",
       "public/js/modules/state.js",
       "public/js/modules/api.js",
@@ -58,10 +59,10 @@
     "testTimeout": 10000,
     "coverageThreshold": {
       "global": {
-        "statements": 70,
-        "branches": 70,
-        "functions": 45,
-        "lines": 70
+        "statements": 80,
+        "branches": 75,
+        "functions": 80,
+        "lines": 80
       }
     }
   },

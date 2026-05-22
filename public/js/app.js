@@ -81,7 +81,19 @@ async function loadGlobalHistory() {
 
 async function startChat() {
   const recipient = dom.recipientInput.value.trim();
-  if (!recipient || recipient === state.getCurrentUser() || recipient !== dom.recipientInput.value || /[^a-zA-Z0-9_-]/.test(recipient)) {
+  if (!recipient || recipient === state.getCurrentUser() || recipient !== dom.recipientInput.value) {
+    ui.appendSystem("private-messages", "Invalid recipient username.");
+    return;
+  }
+  // Validate username format and length (mirrors server validation)
+  function isValidUsername(username) {
+    if (typeof username !== 'string') return false;
+    const codePoints = [...username].length;
+    if (codePoints < 1 || codePoints > 30) return false;
+    const allowed = /^[\w\-\u3001-\u9FFF\uA000-\uA4FF\uAC00-\uD7FF\uF900-\uFAFF\u2E80-\u2EFF\u31F0-\u31FF\u3040-\u30FF]+$/u;
+    return allowed.test(username);
+  }
+  if (!isValidUsername(recipient)) {
     ui.appendSystem("private-messages", "Invalid recipient username.");
     return;
   }
@@ -132,16 +144,16 @@ function sendGlobalMessage() {
   
   // Timeout optimistic message after 31s if no response
   const timeoutId = setTimeout(() => {
-    // ✅ ULTIMATE GUARD: This is the final check. Nothing gets past this.
-    if (state.getOptimisticTimeout(clientId) === 'fired') return;
-    state.setOptimisticTimeout(clientId, 'fired');
+    // If the optimistic timeout was already cleared (message succeeded), skip
+    if (!state.hasOptimisticTimeout(clientId)) return;
+    state.deleteOptimisticTimeout(clientId);
     
     const pending = document.querySelector(`#global-messages .message.pending[data-client-id="${clientId}"]`);
-    if (!pending) return;
-    // Remove pending DOM so a late server delivery won't conflict
-    pending.remove();
-    optimistic.clearOptimisticPending("global", clientId);
-    ui.appendSystem("global-messages", "Message failed to send. Please try again.");
+    if (pending) {
+      pending.remove();
+      optimistic.clearOptimisticPending("global", clientId);
+      ui.appendSystem("global-messages", "Message failed to send. Please try again.");
+    }
   }, utils.OPTIMISTIC_TIMEOUT);
   
   state.setOptimisticTimeout(clientId, timeoutId);
@@ -173,16 +185,16 @@ function sendPrivateMessage() {
   
   // Timeout optimistic message after 31s if no response
   const timeoutId = setTimeout(() => {
-    // ✅ ULTIMATE GUARD: This is the final check. Nothing gets past this.
-    if (state.getOptimisticTimeout(clientId) === 'fired') return;
-    state.setOptimisticTimeout(clientId, 'fired');
+    // If the optimistic timeout was already cleared (message succeeded), skip
+    if (!state.hasOptimisticTimeout(clientId)) return;
+    state.deleteOptimisticTimeout(clientId);
     
     const pending = document.querySelector(`#private-messages .message.pending[data-client-id="${clientId}"]`);
-    if (!pending) return;
-    // Remove pending DOM element to avoid late-ACK conflicts
-    pending.remove();
-    optimistic.clearOptimisticPending("private", clientId);
-    ui.appendSystem("private-messages", "Message failed to send. Please try again.");
+    if (pending) {
+      pending.remove();
+      optimistic.clearOptimisticPending("private", clientId);
+      ui.appendSystem("private-messages", "Message failed to send. Please try again.");
+    }
   }, utils.OPTIMISTIC_TIMEOUT);
   
   state.setOptimisticTimeout(clientId, timeoutId);

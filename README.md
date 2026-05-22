@@ -42,15 +42,40 @@ A real-time chat application built with Node.js, Socket.IO, and MongoDB. Users c
 
 ```
 chat-app/
-├── server.js           # Main server file — starts everything
-├── .env                # Secret config values (never commit this)
+├── server.js              # Main server file — starts everything
+├── app.js                 # Express app setup — middleware, routes, error handling
+├── .env                   # Secret config values (never commit this)
+├── babel.config.json      # Babel configuration for ES module support in tests
+├── config/
+│   ├── db.js              # MongoDB connection setup
+│   └── env.js             # Environment variable validation and access
+├── middleware/
+│   ├── auth.js            # JWT verification middleware for routes
+│   ├── rateLimiter.js     # Rate limiting config for auth routes
+│   └── security.js        # Additional security middleware (helmet, cors, etc.)
 ├── models/
-│   ├── User.js         # Database schema for users
-│   └── Message.js      # Database schema for messages
+│   ├── User.js            # Database schema for users
+│   └── Message.js         # Database schema for messages
 ├── routes/
-│   └── auth.js         # Register and login routes with rate limiting
-└── public/
-    └── index.html      # Frontend — the entire chat UI
+│   ├── auth.js            # Register and login routes with rate limiting
+│   └── messages.js        # Message retrieval routes (global + private history)
+├── sockets/
+│   ├── index.js           # Socket.IO server setup and event wiring
+│   ├── state.js           # In-memory state: online users, socket maps
+│   └── handlers/
+│       └── ...            # Individual event handlers (message, typing, etc.)
+├── utils/
+│   └── logger.js          # Custom logger utility
+├── public/
+│   ├── index.html         # Frontend — the entire chat UI
+│   ├── css/
+│   │   └── ...            # Stylesheets
+│   └── js/
+│       └── ...            # Client-side JavaScript
+└── __tests__/
+    ├── unit/              # Unit tests
+    ├── integration/       # Integration tests
+    └── e2e/               # End-to-end tests
 ```
 
 ---

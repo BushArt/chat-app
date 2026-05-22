@@ -300,6 +300,26 @@ describe("Socket.IO integration", () => {
       expect(m2).toHaveProperty('message');
       expect(ack).toEqual({ status: 'ok', count: docs.length });
     });
+
+    test("sync: reconnecting client receives missed private messages and ack", async () => {
+      const docs = [
+        { sender: 'bob', receiver: 'alice', message: 'hey back', createdAt: new Date('2026-05-02T00:00:00Z'), clientId: 'c3', _id: 'm3' }
+      ];
+      Message.find = jest.fn().mockReturnValue({ where: jest.fn().mockReturnThis(), sort: jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue(docs) });
+
+      const client = track(await connectAndWait(port, "valid-jwt"));
+      const msgPromise = waitForEvent(client, "receive_message");
+      const ackPromise = new Promise((resolve) => {
+        client.emit('sync', { type: 'private', with: 'bob' }, (ack) => resolve(ack));
+      });
+
+      const [message, ack] = await Promise.all([msgPromise, ackPromise]);
+
+      expect(message).toHaveProperty('sender', 'bob');
+      expect(message).toHaveProperty('receiver', 'alice');
+      expect(message).toHaveProperty('room', 'alice_bob');
+      expect(ack).toEqual({ status: 'ok', count: docs.length });
+    });
   });
 
   // -------------------------------------------------------------------

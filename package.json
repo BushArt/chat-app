@@ -7,7 +7,8 @@
     "start": "node server.js",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "test:e2e": "npx jest --selectProjects e2e --runInBand"
   },
   "jest": {
     "projects": [
@@ -28,6 +29,16 @@
         "testMatch": [
           "**/__tests__/unit/public/**/*.test.js"
         ]
+      },
+      {
+        "displayName": "e2e",
+        "testEnvironment": "node",
+        "testMatch": [
+          "**/__tests__/e2e/**/*.test.js"
+        ],
+        "globalSetup": "<rootDir>/__tests__/e2e/globalSetup.js",
+        "globalTeardown": "<rootDir>/__tests__/e2e/globalTeardown.js",
+        "testTimeout": 30000
       }
     ],
     "coverageProvider": "v8",
@@ -59,7 +70,6 @@
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
-    "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "express-rate-limit": "^8.3.2",
     "jsonwebtoken": "^9.0.3",
@@ -70,6 +80,7 @@
   "devDependencies": {
     "@babel/core": "^7.29.0",
     "@babel/preset-env": "^7.29.5",
+    "dotenv": "^17.4.2",
     "jest": "^30.4.2",
     "jest-environment-jsdom": "^30.4.1",
     "socket.io-client": "^4.8.3",

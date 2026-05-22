@@ -2,8 +2,11 @@ const express = require('express');
 const router = express.Router();
 const makeRateLimiter = require('../middleware/rateLimiter');
 
+const isTestEnvironment = process.env.NODE_ENV === 'test';
+
 // Small per-IP express middleware using in-memory limiter instances
 function rateLimitMiddleware(req, res, next) {
+  if (isTestEnvironment) return next();
   try {
     if (!req.app.locals._rateLimiters) req.app.locals._rateLimiters = new Map();
     const ip = req.ip || req.connection.remoteAddress || 'anonymous';

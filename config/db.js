@@ -1,8 +1,14 @@
 const mongoose = require('mongoose');
 
 async function connectDatabase() {
+  const uri = process.env.TEST_MONGO_URI || process.env.MONGO_URI;
+
   try {
-    await mongoose.connect(process.env.MONGO_URI);
+    if (!uri) {
+      throw new Error('Missing MongoDB URI');
+    }
+
+    await mongoose.connect(uri);
     const logger = require('../utils/logger');
     logger.info({ event: 'db_connected' });
   } catch (err) {

@@ -1,12 +1,16 @@
 /**
  * Sync handler
- * Accepts { lastSeenAt } and emits missed global messages to the reconnecting socket
+ * Accepts { type, lastSeenAt, with, room } and emits missed messages back to the calling socket.
+ * - type: 'global' (default) or 'private'
+ * - For global: emits 'receive_global_message'
+ * - For private: emits 'receive_message' with `room` field set to the expected DM room name
  */
 
 const Message = require('../../models/Message');
 const logger = require('../../utils/logger');
 
 const MAX_HISTORY_GLOBAL = 100;
+const MAX_HISTORY_PRIVATE = 50;
 
 module.exports = function createSyncHandler(io, socket, state, messageAllowed) {
   return async function handleSync(data, ack) {
@@ -26,10 +30,86 @@ module.exports = function createSyncHandler(io, socket, state, messageAllowed) {
       // ignore limiter errors and proceed
     }
 
+    const type = data?.type === 'private' ? 'private' : 'global';
     let lastSeen = null;
     if (data && typeof data.lastSeenAt === 'string') {
       const parsed = new Date(data.lastSeenAt);
       if (!Number.isNaN(parsed.getTime())) lastSeen = parsed;
+    }
+
+    if (type === 'private') {
+      const peer = data?.with && typeof data.with === 'string' ? data.with.trim() : null;
+      const room = data?.room && typeof data.room === 'string' ? data.room.trim() : null;
+
+      if (!peer && !room) {
+        if (typeof ack === 'function') {
+          try { ack({ status: 'error', message: 'missing_with_or_room' }); } catch (e) {}
+        }
+        return;
+      }
+
+      let otherUser = peer;
+      let expectedRoom = room;
+      if (!otherUser && expectedRoom) {
+        const parts = expectedRoom.split('_');
+        if (parts.length !== 2 || !parts.includes(username)) {
+          if (typeof ack === 'function') {
+            try { ack({ status: 'error', message: 'invalid_room' }); } catch (e) {}
+          }
+          return;
+        }
+        otherUser = parts.find((p) => p !== username);
+      }
+
+      if (otherUser && otherUser === username) {
+        if (typeof ack === 'function') {
+          try { ack({ status: 'error', message: 'invalid_peer' }); } catch (e) {}
+        }
+        return;
+      }
+
+      if (otherUser && !expectedRoom) expectedRoom = [username, otherUser].sort().join('_');
+
+      try {
+        let query = Message.find({
+          isGlobal: false,
+          $or: [
+            { sender: username, receiver: otherUser },
+            { sender: otherUser, receiver: username }
+          ]
+        });
+
+        if (lastSeen) {
+          query = query.where('createdAt').gt(lastSeen);
+        }
+
+        const docs = await query.sort({ createdAt: 1 }).limit(MAX_HISTORY_PRIVATE);
+        const payloads = docs.map((doc) => ({
+          sender: doc.sender,
+          receiver: doc.receiver,
+          message: doc.message,
+          createdAt: doc.createdAt,
+          clientId: doc.clientId,
+          id: doc._id,
+          room: expectedRoom,
+        }));
+
+        payloads.forEach((payload) => {
+          try { socket.emit('receive_message', payload); } catch (e) {}
+        });
+
+        logger.info({ event: 'sync', type: 'private', username, peer: otherUser, room: expectedRoom, lastSeenAt: lastSeen ? lastSeen.toISOString() : null, count: payloads.length });
+        if (typeof ack === 'function') {
+          try { ack({ status: 'ok', count: payloads.length }); } catch (e) {}
+        }
+      } catch (err) {
+        logger.error({ event: 'sync_error', type: 'private', err: String(err), username });
+        socket.emit('error_message', { error: 'Could not sync private messages' });
+        if (typeof ack === 'function') {
+          try { ack({ status: 'error', message: String(err) }); } catch (e) {}
+        }
+      }
+      return;
     }
 
     try {
@@ -41,19 +121,17 @@ module.exports = function createSyncHandler(io, socket, state, messageAllowed) {
         docs = docs.reverse();
       }
 
-      // Emit missed messages only to this socket
-      const payloads = docs.map(d => ({ sender: d.sender, message: d.message, createdAt: d.createdAt, clientId: d.clientId, id: d._id }));
-      payloads.forEach(p => {
-        try { socket.emit('receive_global_message', p); } catch (e) {}
+      const payloads = docs.map((doc) => ({ sender: doc.sender, message: doc.message, createdAt: doc.createdAt, clientId: doc.clientId, id: doc._id }));
+      payloads.forEach((payload) => {
+        try { socket.emit('receive_global_message', payload); } catch (e) {}
       });
 
-      logger.info({ event: 'sync', username, lastSeenAt: lastSeen ? lastSeen.toISOString() : null, count: payloads.length });
-
+      logger.info({ event: 'sync', type: 'global', username, lastSeenAt: lastSeen ? lastSeen.toISOString() : null, count: payloads.length });
       if (typeof ack === 'function') {
         try { ack({ status: 'ok', count: payloads.length }); } catch (e) {}
       }
     } catch (err) {
-      logger.error({ event: 'sync_error', err: String(err), username });
+      logger.error({ event: 'sync_error', type: 'global', err: String(err), username });
       socket.emit('error_message', { error: 'Could not sync messages' });
       if (typeof ack === 'function') {
         try { ack({ status: 'error', message: String(err) }); } catch (e) {}

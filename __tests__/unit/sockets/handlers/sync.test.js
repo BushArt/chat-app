@@ -13,6 +13,14 @@ describe("sync handler", () => {
     messageAllowed = jest.fn().mockReturnValue(true);
   }
 
+  function createChainableQuery(docs) {
+    return {
+      where: jest.fn().mockReturnThis(),
+      sort: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockResolvedValue(docs),
+    };
+  }
+
   beforeEach(() => {
     jest.clearAllMocks();
     createMocks();
@@ -35,6 +43,51 @@ describe("sync handler", () => {
     expect(Message.find).not.toHaveBeenCalled();
     expect(socket.emit).not.toHaveBeenCalled();
     expect(ack).not.toHaveBeenCalled();
+  });
+
+  test("private sync returns error ack when with and room are missing", async () => {
+    const ack = jest.fn();
+    await handler({ type: 'private' }, ack);
+    expect(socket.emit).not.toHaveBeenCalledWith('receive_message', expect.anything());
+    expect(ack).toHaveBeenCalledWith({ status: 'error', message: 'missing_with_or_room' });
+  });
+
+  test("private sync returns error ack when room is invalid", async () => {
+    const ack = jest.fn();
+    await handler({ type: 'private', room: 'invalidroom' }, ack);
+    expect(socket.emit).not.toHaveBeenCalledWith('receive_message', expect.anything());
+    expect(ack).toHaveBeenCalledWith({ status: 'error', message: 'invalid_room' });
+  });
+
+  test("emits missed private messages for valid peer and acks with count", async () => {
+    const docs = [
+      { sender: 'alice', receiver: 'bob', message: 'secret', createdAt: new Date('2026-05-02T00:00:00Z'), clientId: 'c1', _id: 'm1' },
+      { sender: 'bob', receiver: 'alice', message: 'reply', createdAt: new Date('2026-05-03T00:00:00Z'), clientId: 'c2', _id: 'm2' }
+    ];
+    Message.find = jest.fn().mockReturnValue(createChainableQuery(docs));
+
+    const ack = jest.fn();
+    await handler({ type: 'private', with: 'bob' }, ack);
+
+    expect(Message.find).toHaveBeenCalledWith({ isGlobal: false, $or: [{ sender: 'alice', receiver: 'bob' }, { sender: 'bob', receiver: 'alice' }] });
+    expect(socket.emit).toHaveBeenCalledTimes(docs.length);
+    expect(socket.emit).toHaveBeenCalledWith('receive_message', expect.objectContaining({ sender: 'alice', receiver: 'bob', message: 'secret', room: 'alice_bob' }));
+    expect(socket.emit).toHaveBeenCalledWith('receive_message', expect.objectContaining({ sender: 'bob', receiver: 'alice', message: 'reply', room: 'alice_bob' }));
+    expect(ack).toHaveBeenCalledWith({ status: 'ok', count: docs.length });
+  });
+
+  test("emits missed private messages for room-based sync and acks with count", async () => {
+    const docs = [
+      { sender: 'bob', receiver: 'alice', message: 'hey there', createdAt: new Date('2026-05-02T00:00:00Z'), clientId: 'c3', _id: 'm3' }
+    ];
+    Message.find = jest.fn().mockReturnValue(createChainableQuery(docs));
+
+    const ack = jest.fn();
+    await handler({ type: 'private', room: 'alice_bob' }, ack);
+
+    expect(Message.find).toHaveBeenCalledWith({ isGlobal: false, $or: [{ sender: 'alice', receiver: 'bob' }, { sender: 'bob', receiver: 'alice' }] });
+    expect(socket.emit).toHaveBeenCalledWith('receive_message', expect.objectContaining({ room: 'alice_bob' }));
+    expect(ack).toHaveBeenCalledWith({ status: 'ok', count: docs.length });
   });
 
   test("emits missed messages for valid lastSeenAt and acks with count", async () => {

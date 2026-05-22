@@ -6,6 +6,8 @@ const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const User = require('../models/User');
 
+const isTestEnvironment = process.env.NODE_ENV === 'test';
+
 // Escape user input before constructing RegExp to avoid regex injection
 function escapeRegExp(str) {
   return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -16,7 +18,9 @@ function escapeRegExp(str) {
 // Max 10 attempts per IP per 15 minutes
 // Applies to both login and register
 // ─────────────────────────────────────────
-const authLimiter = rateLimit({
+const authLimiter = isTestEnvironment
+  ? (req, res, next) => next()
+  : rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   message: { error: 'Too many attempts, please try again later.' },

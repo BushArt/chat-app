@@ -5,8 +5,17 @@ require('dotenv').config();
 // Fail fast at startup if required vars are missing
 // rather than crashing mid-request with a cryptic error.
 // ─────────────────────────────────────────
-const REQUIRED_ENV = ['MONGO_URI', 'JWT_SECRET'];
+const REQUIRED_ENV = ['JWT_SECRET'];
 const missingEnv = REQUIRED_ENV.filter((key) => !process.env[key]);
+
+if (process.env.NODE_ENV !== 'test') {
+  if (!process.env.MONGO_URI) {
+    missingEnv.push('MONGO_URI');
+  }
+} else if (!process.env.MONGO_URI && !process.env.TEST_MONGO_URI) {
+  missingEnv.push('TEST_MONGO_URI');
+}
+
 if (missingEnv.length > 0) {
   const logger = require('../utils/logger');
   logger.error({ event: 'env_missing', missing: missingEnv });

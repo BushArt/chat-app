@@ -3,6 +3,7 @@
  */
 
 const Message = require('../../models/Message');
+const logger = require('../../utils/logger');
 
 module.exports = function createPrivateMessageHandler(io, socket, state, messageAllowed) {
 

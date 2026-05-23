@@ -36,6 +36,10 @@ app.get('/ping', (req, res) => {
   res.send('Server is running!');
 });
 
+// ── Error Handling ──
+const errorHandler = require('./middleware/errorHandler');
+app.use(errorHandler);
+
 module.exports = {
   app,
   server,

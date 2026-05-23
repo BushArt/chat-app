@@ -32,7 +32,7 @@ describe("sync handler", () => {
     messageAllowed.mockReturnValue(false);
     const ack = jest.fn();
     await handler({ lastSeenAt: new Date().toISOString() }, ack);
-    expect(socket.emit).toHaveBeenCalledWith("error_message", { error: expect.any(String) });
+    expect(socket.emit).toHaveBeenCalledWith("error_message", { error: expect.any(String), code: expect.any(String) });
     expect(ack).toHaveBeenCalledWith(expect.objectContaining({ status: 'error', message: 'rate_limited' }));
   });
 
@@ -49,14 +49,14 @@ describe("sync handler", () => {
     const ack = jest.fn();
     await handler({ type: 'private' }, ack);
     expect(socket.emit).not.toHaveBeenCalledWith('receive_message', expect.anything());
-    expect(ack).toHaveBeenCalledWith({ status: 'error', message: 'missing_with_or_room' });
+    expect(ack).toHaveBeenCalledWith(expect.objectContaining({ status: 'error', message: 'Missing peer or room for private sync', code: 'missing_peer_or_room' }));
   });
 
   test("private sync returns error ack when room is invalid", async () => {
     const ack = jest.fn();
     await handler({ type: 'private', room: 'invalidroom' }, ack);
     expect(socket.emit).not.toHaveBeenCalledWith('receive_message', expect.anything());
-    expect(ack).toHaveBeenCalledWith({ status: 'error', message: 'invalid_room' });
+    expect(ack).toHaveBeenCalledWith(expect.objectContaining({ status: 'error', message: 'Invalid room format for private sync', code: 'invalid_room' }));
   });
 
   test("emits missed private messages for valid peer and acks with count", async () => {
@@ -128,7 +128,7 @@ describe("sync handler", () => {
     Message.find = jest.fn().mockReturnValue({ sort: jest.fn().mockReturnThis(), limit: jest.fn().mockRejectedValue(new Error('DB error')) });
     const ack = jest.fn();
     await handler({}, ack);
-    expect(socket.emit).toHaveBeenCalledWith('error_message', { error: 'Could not sync messages' });
+    expect(socket.emit).toHaveBeenCalledWith('error_message', { error: 'Server error during global sync', code: 'global_sync_failed' });
     expect(ack).toHaveBeenCalledWith(expect.objectContaining({ status: 'error' }));
   });
 });

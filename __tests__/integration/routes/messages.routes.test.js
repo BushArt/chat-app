@@ -2,6 +2,7 @@ const request = require("supertest");
 const express = require("express");
 const cors = require("cors");
 const securityHeaders = require("../../../middleware/security");
+const errorHandler = require("../../../middleware/errorHandler");
 
 // ── Mocks ──────────────────────────────────────────────────────────────
 jest.mock("../../../models/Message");
@@ -27,6 +28,7 @@ function createApp() {
   app.use(express.json({ limit: "100kb" }));
   app.use(securityHeaders);
   app.use("/messages", messageRoutes);
+  app.use(errorHandler);
   return app;
 }
 
@@ -47,6 +49,8 @@ describe("GET /messages/global", () => {
     const app = createApp();
     const res = await request(app).get("/messages/global");
     expect(res.status).toBe(401);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('authentication_required');
   });
 
   test("returns 401 when header is malformed", async () => {
@@ -55,6 +59,8 @@ describe("GET /messages/global", () => {
       .get("/messages/global")
       .set("Authorization", "Token abc123");
     expect(res.status).toBe(401);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('authentication_required');
   });
 
   test("returns 403 when token is invalid", async () => {
@@ -67,6 +73,8 @@ describe("GET /messages/global", () => {
       .get("/messages/global")
       .set("Authorization", "Bearer invalid-token");
     expect(res.status).toBe(403);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('invalid_token');
   });
 
   // ── Success ──────────────────────────────────────────────────────
@@ -137,6 +145,8 @@ describe("GET /messages/:user1/:user2", () => {
     const app = createApp();
     const res = await request(app).get("/messages/alice/bob");
     expect(res.status).toBe(401);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('authentication_required');
   });
 
   test("returns 403 with an invalid JWT", async () => {
@@ -149,6 +159,8 @@ describe("GET /messages/:user1/:user2", () => {
       .get("/messages/alice/bob")
       .set("Authorization", "Bearer invalid-token");
     expect(res.status).toBe(403);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('invalid_token');
   });
 
   // ── Authorization ────────────────────────────────────────────────
@@ -160,6 +172,8 @@ describe("GET /messages/:user1/:user2", () => {
       .get("/messages/alice/bob")
       .set("Authorization", "Bearer token");
     expect(res.status).toBe(403);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('forbidden_access');
   });
 
   test("returns 200 when authenticated user is user1", async () => {
@@ -194,6 +208,8 @@ describe("GET /messages/:user1/:user2", () => {
       .set("Authorization", "Bearer token");
     // "Alice" !== "alice" so this should be 403
     expect(res.status).toBe(403);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('forbidden_access');
   });
 
   // ── Success ──────────────────────────────────────────────────────

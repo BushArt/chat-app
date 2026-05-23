@@ -208,6 +208,81 @@ This app is deployed on **Railway** with **MongoDB Atlas** as the cloud database
 
 ---
 
+## Error Handling
+
+All API errors return a consistent JSON shape:
+
+```json
+{
+  "error": "Human-readable description",
+  "code": "machine_readable_code"
+}
+```
+
+Socket errors are emitted as an `error_message` event with the same payload shape.
+
+### HTTP Error Codes
+
+| Code | Meaning | Typical Status |
+|------|---------|---------------|
+| `authentication_required` | Missing or malformed Authorization header | 401 |
+| `invalid_token` | JWT is expired or malformed | 403 |
+| `missing_credentials` | Username or password not provided | 400 |
+| `invalid_username` | Username fails validation (length, characters) | 400 |
+| `password_too_short` | Password < 6 characters | 400 |
+| `password_too_long` | Password > 128 characters | 400 |
+| `username_taken` | Username already exists (duplicate) | 400 |
+| `invalid_credentials` | Username not found or password mismatch | 400 |
+| `forbidden_access` | User is not a participant in the conversation | 403 |
+| `rate_limited` | Too many requests in a short window | 429 |
+| `jwt_secret_missing` | Server misconfiguration (no JWT_SECRET set) | 500 |
+| `registration_failed` | Unexpected error during registration | 500 |
+| `login_failed` | Unexpected error during login | 500 |
+| `global_messages_fetch_failed` | Could not retrieve global chat history | 500 |
+| `private_messages_fetch_failed` | Could not retrieve private message history | 500 |
+| `missing_peer_or_room` | Sync request missing required fields | 400 |
+| `invalid_room` | Room name does not follow `user1_user2` format | 400 |
+| `invalid_peer` | Cannot sync private messages with yourself | 400 |
+| `global_message_failed` | Server error while sending a global message | 500 |
+| `private_message_failed` | Server error while sending a private message | 500 |
+| `global_sync_failed` | Server error during global sync | 500 |
+| `private_sync_failed` | Server error during private sync | 500 |
+| `internal_error` | Default fallback code | 500 |
+
+### Usage in Routes
+
+```js
+const HttpError = require('../utils/HttpError');
+
+// Inside an async route handler:
+if (!user) return next(new HttpError('User not found', 404, 'user_not_found'));
+
+// Or throw — the error handler middleware will catch it:
+throw new HttpError('Invalid input', 400, 'invalid_input');
+```
+
+### Usage in Socket Handlers
+
+```js
+const emitError = require('../../utils/socketError');
+const HttpError = require('../../utils/HttpError');
+
+// Inside a socket handler:
+if (!valid) emitError(socket, 'error_message', new HttpError('Invalid data', 400, 'invalid_data'));
+```
+
+### Creating Custom Errors
+
+```js
+new HttpError(message, statusCode, errorCode)
+```
+
+- `message` — Human-readable string sent to the client.
+- `statusCode` — HTTP status code (default: `500`).
+- `errorCode` — Machine-readable string for programmatic handling (default: `'internal_error'`).
+
+---
+
 ## Security
 
 - Passwords are hashed with bcrypt before storing — never stored as plain text

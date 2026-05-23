@@ -2,6 +2,7 @@ const request = require("supertest");
 const express = require("express");
 const cors = require("cors");
 const securityHeaders = require("../../../middleware/security");
+const errorHandler = require("../../../middleware/errorHandler");
 
 // ── Mocks ──────────────────────────────────────────────────────────────
 // Mock express-rate-limit to no-op — rate limiter behavior is tested in Phase 2 unit tests
@@ -26,6 +27,7 @@ function createApp() {
   app.use(securityHeaders);
   app.use("/auth", authRoutes);
   app.get("/ping", (req, res) => res.send("Server is running!"));
+  app.use(errorHandler);
   return app;
 }
 
@@ -99,6 +101,8 @@ describe("POST /auth/register", () => {
       .post("/auth/register")
       .send({ password: "password123" });
     expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('missing_credentials');
   });
 
   test("returns 400 when password is missing", async () => {
@@ -107,19 +111,18 @@ describe("POST /auth/register", () => {
       .post("/auth/register")
       .send({ username: "alice" });
     expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('missing_credentials');
   });
 
   test("returns 400 when body is empty", async () => {
     const app = createApp();
     const res = await request(app).post("/auth/register").send({});
     expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('missing_credentials');
   });
 
-  test("error responses have an error field", async () => {
-    const app = createApp();
-    const res = await request(app).post("/auth/register").send({});
-    expect(res.body).toHaveProperty("error");
-  });
 
   // ── Username validation ───────────────────────────────────────────
   test("returns 400 when username is empty after trim", async () => {
@@ -128,6 +131,8 @@ describe("POST /auth/register", () => {
       .post("/auth/register")
       .send({ username: "   ", password: "password123" });
     expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('invalid_username');
   });
 
   test("returns 400 when username exceeds 30 characters (31 Latin chars)", async () => {
@@ -136,6 +141,8 @@ describe("POST /auth/register", () => {
       .post("/auth/register")
       .send({ username: "a".repeat(31), password: "password123" });
     expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('invalid_username');
   });
 
   test("returns 201 when username is exactly 30 characters", async () => {
@@ -152,6 +159,8 @@ describe("POST /auth/register", () => {
       .post("/auth/register")
       .send({ username: "alice bob", password: "password123" });
     expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('invalid_username');
   });
 
   test("returns 400 when username contains @ symbol", async () => {
@@ -160,6 +169,8 @@ describe("POST /auth/register", () => {
       .post("/auth/register")
       .send({ username: "alice@test", password: "password123" });
     expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('invalid_username');
   });
 
   test("returns 400 when username contains ideographic space U+3000", async () => {
@@ -168,6 +179,8 @@ describe("POST /auth/register", () => {
       .post("/auth/register")
       .send({ username: "alice\u3000bob", password: "password123" });
     expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('invalid_username');
   });
 
   test("returns 400 when username contains an emoji", async () => {
@@ -176,6 +189,8 @@ describe("POST /auth/register", () => {
       .post("/auth/register")
       .send({ username: "alice😀", password: "password123" });
     expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('invalid_username');
   });
 
   test("returns 201 when username contains Latin characters", async () => {
@@ -241,6 +256,8 @@ describe("POST /auth/register", () => {
       .post("/auth/register")
       .send({ username: "alice", password: "12345" });
     expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('password_too_short');
   });
 
   test("returns 400 when password is 129 characters", async () => {
@@ -249,6 +266,8 @@ describe("POST /auth/register", () => {
       .post("/auth/register")
       .send({ username: "alice", password: "x".repeat(129) });
     expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('password_too_long');
   });
 
   test("returns 201 when password is exactly 6 characters", async () => {
@@ -275,6 +294,8 @@ describe("POST /auth/register", () => {
       .post("/auth/register")
       .send({ username: "alice", password: "password123" });
     expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('username_taken');
   });
 
   test("returns 400 for case-insensitive duplicate", async () => {
@@ -284,6 +305,8 @@ describe("POST /auth/register", () => {
       .post("/auth/register")
       .send({ username: "alice", password: "password123" });
     expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('username_taken');
   });
 
   // ── MongoDB duplicate key race (error code 11000) ────────────────
@@ -296,6 +319,8 @@ describe("POST /auth/register", () => {
       .post("/auth/register")
       .send({ username: "alice", password: "password123" });
     expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('username_taken');
   });
 });
 
@@ -361,6 +386,8 @@ describe("POST /auth/login", () => {
       .post("/auth/login")
       .send({ password: "password123" });
     expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('missing_credentials');
   });
 
   test("returns 400 when password is missing", async () => {
@@ -369,12 +396,16 @@ describe("POST /auth/login", () => {
       .post("/auth/login")
       .send({ username: "alice" });
     expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('missing_credentials');
   });
 
   test("returns 400 when body is empty", async () => {
     const app = createApp();
     const res = await request(app).post("/auth/login").send({});
     expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('missing_credentials');
   });
 
   // ── Failed authentication ────────────────────────────────────────
@@ -385,6 +416,8 @@ describe("POST /auth/login", () => {
       .post("/auth/login")
       .send({ username: "nonexistent", password: "password123" });
     expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('invalid_credentials');
   });
 
   test("returns 400 when password is wrong", async () => {
@@ -394,6 +427,8 @@ describe("POST /auth/login", () => {
       .post("/auth/login")
       .send({ username: "alice", password: "wrongpassword" });
     expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('invalid_credentials');
   });
 
   test("error message is identical for 'user not found' and 'wrong password'", async () => {
@@ -413,7 +448,9 @@ describe("POST /auth/login", () => {
       .send({ username: "alice", password: "wrongpassword" });
 
     expect(res1.body.error).toBe("Invalid username or password");
+    expect(res1.body.code).toBe('invalid_credentials');
     expect(res2.body.error).toBe("Invalid username or password");
+    expect(res2.body.code).toBe('invalid_credentials');
   });
 
   test("returns 400 when password exceeds 128 characters", async () => {
@@ -422,5 +459,7 @@ describe("POST /auth/login", () => {
       .post("/auth/login")
       .send({ username: "alice", password: "x".repeat(129) });
     expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+    expect(res.body.code).toBe('password_too_long');
   });
 });

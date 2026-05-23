@@ -43,11 +43,12 @@ describe("globalMessage handler", () => {
   // -----------------------------------------------------------------------
   // Rate limiter integration
   // -----------------------------------------------------------------------
-  test("emits error_message and returns early when rate limited", async () => {
+  test("emits error_message with code and returns early when rate limited", async () => {
     messageAllowed.mockReturnValue(false);
     await handler({ message: "hello", clientId: "abc" });
     expect(socket.emit).toHaveBeenCalledWith("error_message", {
       error: expect.any(String),
+      code: expect.any(String),
     });
   });
 

@@ -4,6 +4,8 @@
 
 const Message = require('../../models/Message');
 const logger = require('../../utils/logger');
+const emitError = require('../../utils/socketError');
+const HttpError = require('../../utils/HttpError');
 
 module.exports = function createGlobalMessageHandler(io, socket, state, messageAllowed) {
 
@@ -11,7 +13,7 @@ module.exports = function createGlobalMessageHandler(io, socket, state, messageA
     const sender = socket.username;
     if (!sender) return;
     if (!messageAllowed()) {
-      socket.emit('error_message', { error: 'You are sending messages too fast.' });
+      emitError(socket, 'error_message', new HttpError('You are sending messages too fast.', 429, 'rate_limited'));
       return;
     }
 
@@ -54,8 +56,10 @@ module.exports = function createGlobalMessageHandler(io, socket, state, messageA
 
     } catch (err) {
       logger.error({ event: 'global_message_error', err: String(err) });
+      const errorResponse = new HttpError('Server error during global message sending', 500, 'global_message_failed');
+      emitError(socket, 'error_message', errorResponse);
       if (typeof ack === 'function') {
-        try { ack({ status: 'error', message: String(err) }); } catch (e) {
+        try { ack({ status: 'error', message: errorResponse.message, code: errorResponse.code }); } catch (e) {
           logger.error({ event: 'ack_error', context: 'global_message_error_ack', err: String(e), username: sender });
         }
       }

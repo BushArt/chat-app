@@ -8,6 +8,8 @@
 
 const Message = require('../../models/Message');
 const logger = require('../../utils/logger');
+const emitError = require('../../utils/socketError');
+const HttpError = require('../../utils/HttpError');
 
 const MAX_HISTORY_GLOBAL = 100;
 const MAX_HISTORY_PRIVATE = 50;
@@ -20,7 +22,7 @@ module.exports = function createSyncHandler(io, socket, state, messageAllowed) {
     // Optional per-connection rate limiting to prevent abuse
     try {
       if (typeof messageAllowed === 'function' && !messageAllowed()) {
-        socket.emit('error_message', { error: 'Too many requests' });
+        emitError(socket, 'error_message', new HttpError('Too many requests', 429, 'rate_limited'));
         if (typeof ack === 'function') {
           try { ack({ status: 'error', message: 'rate_limited' }); } catch (e) {
             logger.error({ event: 'ack_error', context: 'sync_rate_limited', err: String(e), username });
@@ -45,7 +47,9 @@ module.exports = function createSyncHandler(io, socket, state, messageAllowed) {
 
       if (!peer && !room) {
         if (typeof ack === 'function') {
-          try { ack({ status: 'error', message: 'missing_with_or_room' }); } catch (e) {
+          const errorResponse = new HttpError('Missing peer or room for private sync', 400, 'missing_peer_or_room');
+          emitError(socket, 'error_message', errorResponse);
+          try { ack({ status: 'error', message: errorResponse.message, code: errorResponse.code }); } catch (e) {
             logger.error({ event: 'ack_error', context: 'sync_missing_with_or_room', err: String(e), username });
           }
         }
@@ -58,7 +62,9 @@ module.exports = function createSyncHandler(io, socket, state, messageAllowed) {
         const parts = expectedRoom.split('_');
         if (parts.length !== 2 || !parts.includes(username)) {
           if (typeof ack === 'function') {
-            try { ack({ status: 'error', message: 'invalid_room' }); } catch (e) {
+            const errorResponse = new HttpError('Invalid room format for private sync', 400, 'invalid_room');
+            emitError(socket, 'error_message', errorResponse);
+            try { ack({ status: 'error', message: errorResponse.message, code: errorResponse.code }); } catch (e) {
               logger.error({ event: 'ack_error', context: 'sync_invalid_room', err: String(e), username });
             }
           }
@@ -69,7 +75,9 @@ module.exports = function createSyncHandler(io, socket, state, messageAllowed) {
 
       if (otherUser && otherUser === username) {
         if (typeof ack === 'function') {
-          try { ack({ status: 'error', message: 'invalid_peer' }); } catch (e) {
+          const errorResponse = new HttpError('Cannot sync private messages with yourself', 400, 'invalid_peer');
+          emitError(socket, 'error_message', errorResponse);
+          try { ack({ status: 'error', message: errorResponse.message, code: errorResponse.code }); } catch (e) {
             logger.error({ event: 'ack_error', context: 'sync_invalid_peer', err: String(e), username });
           }
         }
@@ -116,9 +124,10 @@ module.exports = function createSyncHandler(io, socket, state, messageAllowed) {
         }
       } catch (err) {
         logger.error({ event: 'sync_error', type: 'private', err: String(err), username });
-        socket.emit('error_message', { error: 'Could not sync private messages' });
+        const errorResponse = new HttpError('Server error during private sync', 500, 'private_sync_failed');
+        emitError(socket, 'error_message', errorResponse);
         if (typeof ack === 'function') {
-          try { ack({ status: 'error', message: String(err) }); } catch (e) {
+          try { ack({ status: 'error', message: errorResponse.message, code: errorResponse.code }); } catch (e) {
             logger.error({ event: 'ack_error', context: 'sync_private_error_ack', err: String(e), username });
           }
         }
@@ -150,9 +159,10 @@ module.exports = function createSyncHandler(io, socket, state, messageAllowed) {
       }
     } catch (err) {
       logger.error({ event: 'sync_error', type: 'global', err: String(err), username });
-      socket.emit('error_message', { error: 'Could not sync messages' });
+      const errorResponse = new HttpError('Server error during global sync', 500, 'global_sync_failed');
+      emitError(socket, 'error_message', errorResponse);
       if (typeof ack === 'function') {
-        try { ack({ status: 'error', message: String(err) }); } catch (e) {
+        try { ack({ status: 'error', message: errorResponse.message, code: errorResponse.code }); } catch (e) {
           logger.error({ event: 'ack_error', context: 'sync_global_error_ack', err: String(e), username });
         }
       }

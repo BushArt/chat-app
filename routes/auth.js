@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const User = require('../models/User');
+const HttpError = require('../utils/HttpError');
 
 const isTestEnvironment = process.env.NODE_ENV === 'test';
 
@@ -28,7 +29,7 @@ const authLimiter = isTestEnvironment
   legacyHeaders: false,
   handler: (req, res, next, options) => {
     logger.warn({ event: 'rate_limit', ip: req.ip, path: req.path });
-    res.status(options.statusCode).json(options.message);
+    next(new HttpError(options.message.error, options.statusCode, 'rate_limited'));
   }
 });
 
@@ -60,29 +61,31 @@ function isValidUsername(username) {
 // ─────────────────────────────────────────
 // POST /auth/register
 // ─────────────────────────────────────────
-router.post('/register', authLimiter, async (req, res) => {
+router.post('/register', authLimiter, async (req, res, next) => {
   try {
     const { username, password } = req.body;
 
     if (!username || !password) {
-      return res.status(400).json({ error: 'Username and password are required' });
+      return next(new HttpError('Username and password are required', 400, 'missing_credentials'));
     }
 
     // Input hygiene
     const trimmedUsername = username.trim();
 
     if (!isValidUsername(trimmedUsername)) {
-      return res.status(400).json({
-        error: 'Username must be 1–30 characters and may only contain letters, numbers, underscores, hyphens, or Chinese/Japanese/Korean characters.'
-      });
+      return next(new HttpError(
+        'Username must be 1–30 characters and may only contain letters, numbers, underscores, hyphens, or Chinese/Japanese/Korean characters.',
+        400,
+        'invalid_username'
+      ));
     }
 
     if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      return next(new HttpError('Password must be at least 6 characters', 400, 'password_too_short'));
     }
     
     if (password.length > 128) {
-      return res.status(400).json({ error: 'Password maximum length is 128 characters' });
+      return next(new HttpError('Password maximum length is 128 characters', 400, 'password_too_long'));
     }
 
     const existingUser = await User.findOne({ 
@@ -90,7 +93,7 @@ router.post('/register', authLimiter, async (req, res) => {
     });
     
     if (existingUser) {
-      return res.status(400).json({ error: 'Username already taken' });
+      return next(new HttpError('Username already taken', 400, 'username_taken'));
     }
 
     const bcryptRounds = parseInt(process.env.BCRYPT_ROUNDS) || 10;
@@ -107,29 +110,29 @@ router.post('/register', authLimiter, async (req, res) => {
 
   } catch (err) {
     if (err.code === 11000) {
-      return res.status(400).json({ error: 'Username already taken' });
+      return next(new HttpError('Username already taken', 400, 'username_taken'));
     }
     logger.error({ event: 'register_error', err: String(err) });
-    res.status(500).json({ error: 'Server error during registration' });
+    next(new HttpError('Server error during registration', 500, 'registration_failed'));
   }
 });
 
 // ─────────────────────────────────────────
 // POST /auth/login
 // ─────────────────────────────────────────
-router.post('/login', authLimiter, async (req, res) => {
+router.post('/login', authLimiter, async (req, res, next) => {
   try {
     const { username, password } = req.body;
 
     if (!username || !password) {
-      return res.status(400).json({ error: 'Username and password are required' });
+      return next(new HttpError('Username and password are required', 400, 'missing_credentials'));
     }
 
     // Input hygiene
     const trimmedUsername = username.trim();
 
     if (password.length > 128) {
-      return res.status(400).json({ error: 'Password maximum length is 128 characters' });
+      return next(new HttpError('Password maximum length is 128 characters', 400, 'password_too_long'));
     }
 
     const user = await User.findOne({ 
@@ -139,18 +142,18 @@ router.post('/login', authLimiter, async (req, res) => {
     // Same vague message for both cases — prevents username enumeration
     if (!user) {
       logger.warn({ event: 'failed_login', username: trimmedUsername, ip: req.ip });
-      return res.status(400).json({ error: 'Invalid username or password' });
+      return next(new HttpError('Invalid username or password', 400, 'invalid_credentials'));
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       logger.warn({ event: 'failed_login', username: user.username, ip: req.ip });
-      return res.status(400).json({ error: 'Invalid username or password' });
+      return next(new HttpError('Invalid username or password', 400, 'invalid_credentials'));
     }
 
     if (!process.env.JWT_SECRET) {
       logger.error({ event: 'jwt_missing' });
-      return res.status(500).json({ error: 'Server configuration error' });
+      return next(new HttpError('Server configuration error', 500, 'jwt_secret_missing'));
     }
 
     const token = jwt.sign(
@@ -163,7 +166,7 @@ router.post('/login', authLimiter, async (req, res) => {
 
   } catch (err) {
     logger.error({ event: 'login_error', err: String(err) });
-    res.status(500).json({ error: 'Server error during login' });
+    next(new HttpError('Server error during login', 500, 'login_failed'));
   }
 });
 

@@ -107,25 +107,38 @@ Create a file called `.env` in the root folder:
 MONGO_URI=mongodb+srv://yourname:yourpassword@cluster0.xxxxx.mongodb.net/chatapp
 JWT_SECRET=replacethiswithanyverylongrandomstring
 PORT=3000
+TEST_MONGO_URI=mongodb+srv://yourname:yourpassword@cluster0.xxxxx.mongodb.net/chatapp_test
 ```
 
 - Get your `MONGO_URI` from MongoDB Atlas → Connect → Drivers
 - `JWT_SECRET` can be any long random string — it signs your login tokens. Keep it secret and don't change it once users are live or all existing tokens will break.
+- `TEST_MONGO_URI` is required for end-to-end tests — point it at a **separate** test database. E2E tests will drop and recreate this database, so never use your production database here.
 
 **4. Start the server**
 ```bash
 node server.js
 ```
 
-**5. Open the app**
-
-Visit `http://localhost:3000` in your browser.
-
 > **Tip:** Install `nodemon` for auto-restart on file changes during development:
 > ```bash
 > npm install -g nodemon
 > nodemon server.js
 > ```
+
+**5. Open the app**
+
+Visit `http://localhost:3000` in your browser.
+
+### Running Tests
+
+This project uses **Jest** with three test suites:
+
+| Command | What it runs |
+|---|---|
+| `npm test` | All unit and integration tests (server + client) |
+| `npm run test:watch` | Tests in watch mode |
+| `npm run test:coverage` | Tests with coverage report (80% threshold) |
+| `npm run test:e2e` | End-to-end tests (requires `TEST_MONGO_URI` in `.env`) |
 
 ---
 

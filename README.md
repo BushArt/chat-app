@@ -42,15 +42,40 @@ A real-time chat application built with Node.js, Socket.IO, and MongoDB. Users c
 
 ```
 chat-app/
-├── server.js           # Main server file — starts everything
-├── .env                # Secret config values (never commit this)
+├── server.js              # Main server file — starts everything
+├── app.js                 # Express app setup — middleware, routes, error handling
+├── .env                   # Secret config values (never commit this)
+├── babel.config.json      # Babel configuration for ES module support in tests
+├── config/
+│   ├── db.js              # MongoDB connection setup
+│   └── env.js             # Environment variable validation and access
+├── middleware/
+│   ├── auth.js            # JWT verification middleware for routes
+│   ├── rateLimiter.js     # Rate limiting config for auth routes
+│   └── security.js        # Additional security middleware (helmet, cors, etc.)
 ├── models/
-│   ├── User.js         # Database schema for users
-│   └── Message.js      # Database schema for messages
+│   ├── User.js            # Database schema for users
+│   └── Message.js         # Database schema for messages
 ├── routes/
-│   └── auth.js         # Register and login routes with rate limiting
-└── public/
-    └── index.html      # Frontend — the entire chat UI
+│   ├── auth.js            # Register and login routes with rate limiting
+│   └── messages.js        # Message retrieval routes (global + private history)
+├── sockets/
+│   ├── index.js           # Socket.IO server setup and event wiring
+│   ├── state.js           # In-memory state: online users, socket maps
+│   └── handlers/
+│       └── ...            # Individual event handlers (message, typing, etc.)
+├── utils/
+│   └── logger.js          # Custom logger utility
+├── public/
+│   ├── index.html         # Frontend — the entire chat UI
+│   ├── css/
+│   │   └── ...            # Stylesheets
+│   └── js/
+│       └── ...            # Client-side JavaScript
+└── __tests__/
+    ├── unit/              # Unit tests
+    ├── integration/       # Integration tests
+    └── e2e/               # End-to-end tests
 ```
 
 ---
@@ -82,25 +107,38 @@ Create a file called `.env` in the root folder:
 MONGO_URI=mongodb+srv://yourname:yourpassword@cluster0.xxxxx.mongodb.net/chatapp
 JWT_SECRET=replacethiswithanyverylongrandomstring
 PORT=3000
+TEST_MONGO_URI=mongodb+srv://yourname:yourpassword@cluster0.xxxxx.mongodb.net/chatapp_test
 ```
 
 - Get your `MONGO_URI` from MongoDB Atlas → Connect → Drivers
 - `JWT_SECRET` can be any long random string — it signs your login tokens. Keep it secret and don't change it once users are live or all existing tokens will break.
+- `TEST_MONGO_URI` is required for end-to-end tests — point it at a **separate** test database. E2E tests will drop and recreate this database, so never use your production database here.
 
 **4. Start the server**
 ```bash
 node server.js
 ```
 
-**5. Open the app**
-
-Visit `http://localhost:3000` in your browser.
-
 > **Tip:** Install `nodemon` for auto-restart on file changes during development:
 > ```bash
 > npm install -g nodemon
 > nodemon server.js
 > ```
+
+**5. Open the app**
+
+Visit `http://localhost:3000` in your browser.
+
+### Running Tests
+
+This project uses **Jest** with three test suites:
+
+| Command | What it runs |
+|---|---|
+| `npm test` | All unit and integration tests (server + client) |
+| `npm run test:watch` | Tests in watch mode |
+| `npm run test:coverage` | Tests with coverage report (80% threshold) |
+| `npm run test:e2e` | End-to-end tests (requires `TEST_MONGO_URI` in `.env`) |
 
 ---
 

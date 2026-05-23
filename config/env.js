@@ -7,6 +7,13 @@ require('dotenv').config();
 // ─────────────────────────────────────────
 const REQUIRED_ENV = ['JWT_SECRET'];
 const missingEnv = REQUIRED_ENV.filter((key) => !process.env[key]);
+// Validate numeric env vars
+const NUMERIC_ENV = ['BCRYPT_ROUNDS'];
+NUMERIC_ENV.forEach((key) => {
+  if (process.env[key] && isNaN(parseInt(process.env[key], 10))) {
+    missingEnv.push(key);
+  }
+});
 
 if (process.env.NODE_ENV !== 'test') {
   if (!process.env.MONGO_URI) {

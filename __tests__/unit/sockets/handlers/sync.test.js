@@ -71,8 +71,8 @@ describe("sync handler", () => {
 
     expect(Message.find).toHaveBeenCalledWith({ isGlobal: false, $or: [{ sender: 'alice', receiver: 'bob' }, { sender: 'bob', receiver: 'alice' }] });
     expect(socket.emit).toHaveBeenCalledTimes(docs.length);
-    expect(socket.emit).toHaveBeenCalledWith('receive_message', expect.objectContaining({ sender: 'alice', receiver: 'bob', message: 'secret', room: 'alice_bob' }));
-    expect(socket.emit).toHaveBeenCalledWith('receive_message', expect.objectContaining({ sender: 'bob', receiver: 'alice', message: 'reply', room: 'alice_bob' }));
+    expect(socket.emit).toHaveBeenCalledWith('receive_message', expect.objectContaining({ sender: 'alice', receiver: 'bob', message: 'secret', room: 'alice:bob' }));
+    expect(socket.emit).toHaveBeenCalledWith('receive_message', expect.objectContaining({ sender: 'bob', receiver: 'alice', message: 'reply', room: 'alice:bob' }));
     expect(ack).toHaveBeenCalledWith({ status: 'ok', count: docs.length });
   });
 
@@ -83,10 +83,10 @@ describe("sync handler", () => {
     Message.find = jest.fn().mockReturnValue(createChainableQuery(docs));
 
     const ack = jest.fn();
-    await handler({ type: 'private', room: 'alice_bob' }, ack);
+    await handler({ type: 'private', room: 'alice:bob' }, ack);
 
     expect(Message.find).toHaveBeenCalledWith({ isGlobal: false, $or: [{ sender: 'alice', receiver: 'bob' }, { sender: 'bob', receiver: 'alice' }] });
-    expect(socket.emit).toHaveBeenCalledWith('receive_message', expect.objectContaining({ room: 'alice_bob' }));
+    expect(socket.emit).toHaveBeenCalledWith('receive_message', expect.objectContaining({ room: 'alice:bob' }));
     expect(ack).toHaveBeenCalledWith({ status: 'ok', count: docs.length });
   });
 

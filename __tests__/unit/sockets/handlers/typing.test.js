@@ -9,6 +9,7 @@ describe("typing handlers", () => {
     socket = { username: "alice", to: jest.fn().mockReturnThis(), emit: jest.fn() };
     state = {
       typingTimeouts: new Map(),
+      typingTimeoutsByUser: new Map(),
       MAX_TYPING_ENTRIES: 10000,
       TYPING_TIMEOUT: 4000,
     };
@@ -53,6 +54,8 @@ describe("typing handlers", () => {
       // Prefill with MAX entries so the next add triggers eviction
       state.typingTimeouts.set("oldest:global", setTimeout(() => {}, 4000));
       state.typingTimeouts.set("middle:global", setTimeout(() => {}, 4000));
+      state.typingTimeoutsByUser.set("oldest", new Set(["oldest:global"]));
+      state.typingTimeoutsByUser.set("middle", new Set(["middle:global"]));
       expect(state.typingTimeouts.size).toBe(2);
 
       const { handleStartTyping } = createTypingHandlers(io, socket, state);

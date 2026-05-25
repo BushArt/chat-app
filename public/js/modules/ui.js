@@ -64,11 +64,14 @@ export function getDom() {
 }
 
 export function refreshVisibleMeta() {
+  if (state.getTimeFormat() !== "relative") return;
+  const now = Date.now();
   document.querySelectorAll(".message .meta[data-time]").forEach((meta) => {
     const time = meta.getAttribute("data-time");
+    if (!time || (now - new Date(time).getTime()) >= 86400000) return;
     const sender = meta.getAttribute("data-sender") || "";
     const isReceived = meta.getAttribute("data-type") === "received";
-    meta.textContent = (isReceived && sender ? sender + " · " : "") + utils.displayTime(time, state.getTimeFormat());
+    meta.textContent = (isReceived && sender ? sender + " · " : "") + utils.displayTime(time, "relative");
     meta.title = utils.formatTime(time);
   });
 }

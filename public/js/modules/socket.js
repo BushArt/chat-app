@@ -153,19 +153,8 @@ socket.on("disconnect", () => {
 
 socket.on("connect_error", (err) => {
   ui.setConnectionBanner("Connection issue: " + err.message);
-  // Clear sending flags on connection error
   state.setSendingGlobal(false);
   state.setSendingPrivate(false);
-  
-  if (state.getCurrentUser()) {
-    utils.safeLocalStorageRemove("chat_token");
-    utils.safeLocalStorageRemove("chat_user");
-    state.resetAllState();
-    ui.resetChatUi();
-    socket.auth = { token: null };
-    ui.showAuthScreen();
-    ui.showAuthError("Session expired. Please log in again.");
-  }
 });
 
 // ---- Exported emit functions ----

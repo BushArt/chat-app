@@ -96,7 +96,7 @@ describe('private messaging end-to-end', () => {
     const bob = await createConnectedClient(bobToken);
     const charlie = await createConnectedClient(charlieToken);
 
-    const room = ['alice', 'bob'].sort().join('_');
+    const room = ['alice', 'bob'].sort().join(':');
     const connectPromises = [waitForEvent(alice, 'connect'), waitForEvent(bob, 'connect'), waitForEvent(charlie, 'connect')];
     await Promise.all(connectPromises);
 

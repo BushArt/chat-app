@@ -27,7 +27,7 @@ module.exports = function createPrivateMessageHandler(io, socket, state, message
     if (!receiver) return;
     if (!room) return;
 
-    const expectedRoom = [sender, receiver].sort().join('_');
+    const expectedRoom = [sender, receiver].sort().join(':');
     if (room !== expectedRoom) return;
 
     const sanitizedMessage = message.replace(/<[^>]*>/g, '');

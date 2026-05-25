@@ -34,7 +34,8 @@ module.exports = function setupSockets(io) {
   // ── CONNECTION HANDLER ──
   io.on('connection', (socket) => {
     const username = socket.username;
-    state.onlineUsers.set(username, (state.onlineUsers.get(username) || 0) + 1);
+    if (!state.onlineUsers.has(username)) state.onlineUsers.set(username, new Set());
+    state.onlineUsers.get(username).add(socket.id);
     socket.join('global');
     // Emit online user list after a short delay so clients have time to
     // register their `online_users` listener and avoid a race in tests
@@ -43,17 +44,19 @@ module.exports = function setupSockets(io) {
       io.emit('online_users', state.getOnlineList());
     }, 100);
     timer.unref();
-    logger.info({ event: 'socket_connect', username, socketId: socket.id, connections: state.onlineUsers.get(username), uniqueOnline: state.onlineUsers.size });
+    logger.info({ event: 'socket_connect', username, socketId: socket.id, connections: state.onlineUsers.get(username).size, uniqueOnline: state.onlineUsers.size });
 
-    // Per-connection rate limiter
+    // Per-connection rate limiters
     const messageAllowed = makeRateLimiter();
+    const syncAllowed = makeRateLimiter();
 
     // Initialize handlers for this socket
-    const { handleJoinRoom, handleDisconnect } = createPresenceHandlers(io, socket, state, messageAllowed);
+    const joinLimiter = makeRateLimiter();
+    const { handleJoinRoom, handleDisconnect } = createPresenceHandlers(io, socket, state, messageAllowed, joinLimiter);
     const { handleStartTyping, handleStopTyping } = createTypingHandlers(io, socket, state);
     const handleSendGlobalMessage = createGlobalMessageHandler(io, socket, state, messageAllowed);
     const handleSendPrivateMessage = createPrivateMessageHandler(io, socket, state, messageAllowed);
-    const handleSync = createSyncHandler(io, socket, state, messageAllowed);
+    const handleSync = createSyncHandler(io, socket, state, syncAllowed);
 
     // Register event listeners
     socket.on('join_room', handleJoinRoom);

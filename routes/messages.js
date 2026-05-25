@@ -9,7 +9,13 @@ const isTestEnvironment = process.env.NODE_ENV === 'test';
 function rateLimitMiddleware(req, res, next) {
   if (isTestEnvironment) return next();
   try {
-    if (!req.app.locals._rateLimiters) req.app.locals._rateLimiters = new Map();
+    if (!req.app.locals._rateLimiters) {
+      req.app.locals._rateLimiters = new Map();
+      // Periodically purge stale entries to prevent unbounded memory growth
+      setInterval(() => {
+        req.app.locals._rateLimiters.clear();
+      }, 15 * 60 * 1000).unref();
+    }
     const ip = req.ip || req.connection.remoteAddress || 'anonymous';
     const map = req.app.locals._rateLimiters;
     if (!map.has(ip)) map.set(ip, makeRateLimiter());

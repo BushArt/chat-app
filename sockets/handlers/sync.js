@@ -59,7 +59,7 @@ module.exports = function createSyncHandler(io, socket, state, messageAllowed) {
       let otherUser = peer;
       let expectedRoom = room;
       if (!otherUser && expectedRoom) {
-        const parts = expectedRoom.split('_');
+        const parts = expectedRoom.split(':');
         if (parts.length !== 2 || !parts.includes(username)) {
           if (typeof ack === 'function') {
             const errorResponse = new HttpError('Invalid room format for private sync', 400, 'invalid_room');
@@ -84,7 +84,7 @@ module.exports = function createSyncHandler(io, socket, state, messageAllowed) {
         return;
       }
 
-      if (otherUser && !expectedRoom) expectedRoom = [username, otherUser].sort().join('_');
+      if (otherUser && !expectedRoom) expectedRoom = [username, otherUser].sort().join(':');
 
       try {
         let query = Message.find({

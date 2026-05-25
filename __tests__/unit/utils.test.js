@@ -1,4 +1,4 @@
-import {
+﻿import {
   getRoomId,
   relativeTime,
   formatTime,
@@ -24,12 +24,12 @@ afterAll(() => {
 // getRoomId
 // ---------------------------------------------------------------------------
 describe("getRoomId", () => {
-  test("sorts arguments alphabetically: getRoomId('bob', 'alice') returns 'alice_bob'", () => {
-    expect(getRoomId("bob", "alice")).toBe("alice_bob");
+  test("sorts arguments alphabetically: getRoomId('bob', 'alice') returns 'alice:bob'", () => {
+    expect(getRoomId("bob", "alice")).toBe("alice:bob");
   });
 
-  test("sorts arguments alphabetically: getRoomId('alice', 'bob') returns 'alice_bob'", () => {
-    expect(getRoomId("alice", "bob")).toBe("alice_bob");
+  test("sorts arguments alphabetically: getRoomId('alice', 'bob') returns 'alice:bob'", () => {
+    expect(getRoomId("alice", "bob")).toBe("alice:bob");
   });
 
   test("is idempotent regardless of argument order", () => {
@@ -44,16 +44,16 @@ describe("getRoomId", () => {
   });
 
   test("handles single-character usernames", () => {
-    expect(getRoomId("a", "b")).toBe("a_b");
+    expect(getRoomId("a", "b")).toBe("a:b");
   });
 
   test("handles usernames with hyphens and underscores", () => {
-    expect(getRoomId("test-user", "other_name")).toBe("other_name_test-user");
+    expect(getRoomId("test-user", "other_name")).toBe("other_name:test-user");
   });
 
-  test("returns a string containing exactly one underscore", () => {
+  test("returns a string containing exactly one colon separator", () => {
     const result = getRoomId("alice", "bob");
-    expect(result).toMatch(/^[^_]+_[^_]+$/);
+    expect(result).toMatch(/^[^:]+:[^:]+$/);
   });
 });
 
@@ -92,11 +92,11 @@ describe("relativeTime", () => {
     expect(relativeTime(t)).toBe("23 hr ago");
   });
 
-  test("falls back to formatTime for timestamps >= 86400 seconds (24 hrs)", () => {
+  test("falls back to date+time for timestamps >= 86400 seconds (24 hrs)", () => {
     jest.setSystemTime(new Date("2026-05-17T12:00:00Z"));
     const t = new Date(Date.now() - 86400 * 1000);
     const result = relativeTime(t);
-    expect(result).toBe(formatTime(t));
+    expect(result).toBe(t.toLocaleDateString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }));
   });
 });
 

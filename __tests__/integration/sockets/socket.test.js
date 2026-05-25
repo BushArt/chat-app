@@ -1,13 +1,13 @@
-const http = require("http");
+﻿const http = require("http");
 const { Server } = require("socket.io");
 const ioClient = require("socket.io-client");
 const jwt = require("jsonwebtoken");
 const state = require("../../../sockets/state");
 
-// ── Mocks ──────────────────────────────────────────────────────────────
+// â”€â”€ Mocks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 jest.mock("jsonwebtoken");
 
-// Mock the rate limiter factory — returns a limiter function with cleanup
+// Mock the rate limiter factory â€” returns a limiter function with cleanup
 // The limiter function itself doubles as the isAllowed check
 jest.mock("../../../middleware/rateLimiter", () => {
   return jest.fn(() => {
@@ -33,7 +33,7 @@ jest.mock("../../../models/Message", () => {
 
 const Message = require("../../../models/Message");
 
-// ── Server factory ─────────────────────────────────────────────────────
+// â”€â”€ Server factory â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function createSocketServer() {
   const server = http.createServer();
   const io = new Server(server, { transports: ["websocket"] });
@@ -41,7 +41,7 @@ function createSocketServer() {
   return { server, io };
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function connectClient(port, token) {
   return ioClient(`http://localhost:${port}`, {
     transports: ["websocket"],
@@ -205,7 +205,7 @@ describe("Socket.IO integration", () => {
       const clientB = track(await connectAndWait(port, "valid-jwt"));
 
       await new Promise((r) => setTimeout(r, 100));
-      expect(state.onlineUsers.get("alice")).toBe(2);
+      expect(state.onlineUsers.get("alice").size).toBe(2);
     });
 
     test("user remains online after one tab closes", async () => {
@@ -214,7 +214,7 @@ describe("Socket.IO integration", () => {
 
       clientA.close();
       await new Promise((r) => setTimeout(r, 300));
-      expect(state.onlineUsers.get("alice")).toBe(1);
+      expect(state.onlineUsers.get("alice").size).toBe(1);
     });
   });
 
@@ -317,7 +317,7 @@ describe("Socket.IO integration", () => {
 
       expect(message).toHaveProperty('sender', 'bob');
       expect(message).toHaveProperty('receiver', 'alice');
-      expect(message).toHaveProperty('room', 'alice_bob');
+      expect(message).toHaveProperty('room', 'alice:bob');
       expect(ack).toEqual({ status: 'ok', count: docs.length });
     });
   });
@@ -331,7 +331,7 @@ describe("Socket.IO integration", () => {
       const bob = track(await connectAndWait(port, "valid-jwt"));
 
       // Bob joins the DM room
-      bob.emit("join_room", "alice_bob");
+      bob.emit("join_room", "alice:bob");
       await new Promise((r) => setTimeout(r, 200));
 
       const msgPromise = waitForEvent(bob, "receive_message");
@@ -339,14 +339,14 @@ describe("Socket.IO integration", () => {
       alice.emit("send_message", {
         message: "secret",
         receiver: "bob",
-        room: "alice_bob",
+        room: "alice:bob",
         clientId: "c1",
       });
       const received = await msgPromise;
 
       expect(received).toHaveProperty("sender", "alice");
       expect(received).toHaveProperty("message", "secret");
-      expect(received).toHaveProperty("room", "alice_bob");
+      expect(received).toHaveProperty("room", "alice:bob");
       expect(received).toHaveProperty("clientId", "c1");
     });
 
@@ -420,7 +420,7 @@ describe("Socket.IO integration", () => {
       const stopPromise = waitForEvent(bob, "user_stopped_typing");
       alice.emit("send_global_message", { message: "hello", clientId: "c1" });
 
-      // This will timeout if typing cleanup doesn't fire — which is fine
+      // This will timeout if typing cleanup doesn't fire â€” which is fine
       const stopData = await stopPromise;
       expect(stopData).toHaveProperty("username", "alice");
     });

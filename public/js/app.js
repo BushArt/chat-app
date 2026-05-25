@@ -4,6 +4,7 @@ import * as state from './modules/state.js';
 import * as api from './modules/api.js';
 import * as optimistic from './modules/optimistic.js';
 import * as socket from './modules/socket.js';
+import { connect } from './modules/socket.js';
 import * as ui from './modules/ui.js';
 
 let dom;
@@ -237,7 +238,7 @@ function restoreSession() {
   dom.loggedInAs.textContent = "Logged in as: " + savedUser;
   ui.showChatScreen();
   ui.setConnectionBanner("Connecting to chat server...");
-  socket.connect(savedToken);
+  connect(savedToken);
   loadGlobalHistory();
 }
 

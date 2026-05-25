@@ -21,13 +21,13 @@ describe("privateMessage handler", () => {
     createMocks();
     Message.mockClear();
 
-    const mockDocument = {
-      sender: "alice",
-      receiver: "bob",
-      message: "hello",
-      isGlobal: false,
-      clientId: "abc123",
-      room: "alice_bob",
+const mockDocument = {
+  sender: "alice",
+  receiver: "bob",
+  message: "hello",
+  isGlobal: false,
+  clientId: "abc",
+  room: "alice:bob",
       createdAt: new Date("2026-05-17T12:00:00Z"),
       save: jest.fn().mockResolvedValue(),
     };
@@ -41,7 +41,7 @@ describe("privateMessage handler", () => {
   // -----------------------------------------------------------------------
   test("emits error_message with code and returns early when rate limited", async () => {
     messageAllowed.mockReturnValue(false);
-    await handler({ message: "hello", receiver: "bob", room: "alice_bob", clientId: "abc" });
+    await handler({ message: "hello", receiver: "bob", room: "alice:bob", clientId: "abc" });
     expect(socket.emit).toHaveBeenCalledWith("error_message", {
       error: expect.any(String),
       code: expect.any(String),
@@ -50,7 +50,7 @@ describe("privateMessage handler", () => {
 
   test("does not call Message constructor when rate limited", async () => {
     messageAllowed.mockReturnValue(false);
-    await handler({ message: "hello", receiver: "bob", room: "alice_bob", clientId: "abc" });
+    await handler({ message: "hello", receiver: "bob", room: "alice:bob", clientId: "abc" });
     expect(Message).not.toHaveBeenCalled();
   });
 
@@ -58,22 +58,22 @@ describe("privateMessage handler", () => {
   // Input validation — message fields
   // -----------------------------------------------------------------------
   test("returns early when data.message is undefined", async () => {
-    await handler({ receiver: "bob", room: "alice_bob", clientId: "abc" });
+    await handler({ receiver: "bob", room: "alice:bob", clientId: "abc" });
     expect(Message).not.toHaveBeenCalled();
   });
 
   test("returns early when data.message is not a string", async () => {
-    await handler({ message: 123, receiver: "bob", room: "alice_bob", clientId: "abc" });
+    await handler({ message: 123, receiver: "bob", room: "alice:bob", clientId: "abc" });
     expect(Message).not.toHaveBeenCalled();
   });
 
   test("returns early when data.message is empty", async () => {
-    await handler({ message: "", receiver: "bob", room: "alice_bob", clientId: "abc" });
+    await handler({ message: "", receiver: "bob", room: "alice:bob", clientId: "abc" });
     expect(Message).not.toHaveBeenCalled();
   });
 
   test("returns early when data.message exceeds MAX_MESSAGE_LENGTH", async () => {
-    await handler({ message: "x".repeat(1001), receiver: "bob", room: "alice_bob", clientId: "abc" });
+    await handler({ message: "x".repeat(1001), receiver: "bob", room: "alice:bob", clientId: "abc" });
     expect(Message).not.toHaveBeenCalled();
   });
 
@@ -81,12 +81,12 @@ describe("privateMessage handler", () => {
   // Input validation — receiver
   // -----------------------------------------------------------------------
   test("returns early when data.receiver is absent", async () => {
-    await handler({ message: "hello", room: "alice_bob", clientId: "abc" });
+    await handler({ message: "hello", room: "alice:bob", clientId: "abc" });
     expect(Message).not.toHaveBeenCalled();
   });
 
   test("returns early when data.receiver is not a string", async () => {
-    await handler({ message: "hello", receiver: 123, room: "alice_bob", clientId: "abc" });
+    await handler({ message: "hello", receiver: 123, room: "alice:bob", clientId: "abc" });
     expect(Message).not.toHaveBeenCalled();
   });
 
@@ -107,10 +107,10 @@ describe("privateMessage handler", () => {
   // Database write and broadcast
   // -----------------------------------------------------------------------
   test("creates a Message document with isGlobal: false and correct receiver", async () => {
-    const mockDoc = { save: jest.fn().mockResolvedValue(), sender: "alice", receiver: "bob", message: "hi", isGlobal: false, clientId: "c1", room: "alice_bob", createdAt: new Date() };
+    const mockDoc = { save: jest.fn().mockResolvedValue(), sender: "alice", receiver: "bob", message: "hi", isGlobal: false, clientId: "c1", room: "alice:bob", createdAt: new Date() };
     Message.mockImplementation(() => mockDoc);
 
-    await handler({ message: "hi", receiver: "bob", room: "alice_bob", clientId: "c1" });
+    await handler({ message: "hi", receiver: "bob", room: "alice:bob", clientId: "c1" });
 
     expect(Message).toHaveBeenCalledWith({
       sender: "alice",
@@ -123,26 +123,26 @@ describe("privateMessage handler", () => {
 
   test("emits receive_message to the specific room (not global)", async () => {
     const createdAt = new Date("2026-05-17T12:34:56Z");
-    const mockDoc = { save: jest.fn().mockResolvedValue(), sender: "alice", receiver: "bob", message: "hello", isGlobal: false, clientId: "c1", room: "alice_bob", createdAt };
+    const mockDoc = { save: jest.fn().mockResolvedValue(), sender: "alice", receiver: "bob", message: "hello", isGlobal: false, clientId: "c1", room: "alice:bob", createdAt };
     Message.mockImplementation(() => mockDoc);
 
-    await handler({ message: "hello", receiver: "bob", room: "alice_bob", clientId: "c1" });
+    await handler({ message: "hello", receiver: "bob", room: "alice:bob", clientId: "c1" });
 
-    expect(io.to).toHaveBeenCalledWith("alice_bob");
-    expect(io.to("alice_bob").emit).toHaveBeenCalledWith("receive_message", {
+    expect(io.to).toHaveBeenCalledWith("alice:bob");
+    expect(io.to("alice:bob").emit).toHaveBeenCalledWith("receive_message", {
       sender: "alice",
       message: "hello",
       createdAt,
-      room: "alice_bob",
+      room: "alice:bob",
       clientId: "c1",
     });
   });
 
   test("does not emit to global room for private messages", async () => {
-    const mockDoc = { save: jest.fn().mockResolvedValue(), sender: "alice", receiver: "bob", message: "hello", isGlobal: false, clientId: "c1", room: "alice_bob", createdAt: new Date() };
+    const mockDoc = { save: jest.fn().mockResolvedValue(), sender: "alice", receiver: "bob", message: "hello", isGlobal: false, clientId: "c1", room: "alice:bob", createdAt: new Date() };
     Message.mockImplementation(() => mockDoc);
 
-    await handler({ message: "hello", receiver: "bob", room: "alice_bob", clientId: "c1" });
+    await handler({ message: "hello", receiver: "bob", room: "alice:bob", clientId: "c1" });
 
     // Should not have called io.to with "global"
     const globalCalls = io.to.mock.calls.filter(([room]) => room === "global");
@@ -154,7 +154,7 @@ describe("privateMessage handler", () => {
   // -----------------------------------------------------------------------
   test("returns early when socket.username is falsy", async () => {
     socket.username = null;
-    await handler({ message: "hello", receiver: "bob", room: "alice_bob", clientId: "abc" });
+    await handler({ message: "hello", receiver: "bob", room: "alice:bob", clientId: "abc" });
     expect(Message).not.toHaveBeenCalled();
   });
 });

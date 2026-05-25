@@ -26,7 +26,7 @@ export function safeLocalStorageRemove(key) {
 }
 
 export function getRoomId(a, b) {
-  return [a, b].sort().join("_");
+  return [a, b].sort().join(":");
 }
 
 export function formatTime(time) {
@@ -39,7 +39,7 @@ export function relativeTime(time) {
   if (diff < 60) return "just now";
   if (diff < 3600) return Math.floor(diff / 60) + " min ago";
   if (diff < 86400) return Math.floor(diff / 3600) + " hr ago";
-  return formatTime(time);
+  return new Date(time).toLocaleDateString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 export function displayTime(time, timeFormat) {

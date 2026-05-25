@@ -5,10 +5,11 @@
 
 const logger = require('../../utils/logger');
 
-module.exports = function createPresenceHandlers(io, socket, state, messageAllowed) {
+module.exports = function createPresenceHandlers(io, socket, state, messageAllowed, joinLimiter) {
 
   function handleJoinRoom(roomId) {
     if (!roomId || typeof roomId !== 'string' || roomId.length > 100) return;
+    if (joinLimiter && !joinLimiter()) return;
     
     if (roomId === 'global') {
       socket.join(roomId);
@@ -16,10 +17,14 @@ module.exports = function createPresenceHandlers(io, socket, state, messageAllow
       return;
     }
     
-    const parts = roomId.split('_');
-    if (parts.length === 2 && (parts[0] === socket.username || parts[1] === socket.username)) {
-      socket.join(roomId);
-      logger.info({ event: 'join_room', socketId: socket.id, room: roomId });
+    const colonIdx = roomId.indexOf(':');
+    if (colonIdx > 0) {
+      const a = roomId.slice(0, colonIdx);
+      const b = roomId.slice(colonIdx + 1);
+      if (a === socket.username || b === socket.username) {
+        socket.join(roomId);
+        logger.info({ event: 'join_room', socketId: socket.id, room: roomId });
+      }
     }
   }
 
@@ -27,22 +32,26 @@ module.exports = function createPresenceHandlers(io, socket, state, messageAllow
     messageAllowed.cleanup();
     
     if (socket.username) {
-      let remaining = (Number(state.onlineUsers.get(socket.username)) || 1) - 1;
-      if (remaining < 0) remaining = 0;
-      if (remaining <= 0) {
-        state.onlineUsers.delete(socket.username);
-        io.emit('online_users', state.getOnlineList());
-        logger.info({ event: 'user_offline', username: socket.username });
+      const sockets = state.onlineUsers.get(socket.username);
+      if (sockets) {
+        sockets.delete(socket.id);
+        if (sockets.size === 0) {
+          state.onlineUsers.delete(socket.username);
+          io.emit('online_users', state.getOnlineList());
+          logger.info({ event: 'user_offline', username: socket.username });
 
-        for (const [key, timeout] of state.typingTimeouts.entries()) {
-          if (key.startsWith(`${socket.username}:`)) {
-            clearTimeout(timeout);
-            state.typingTimeouts.delete(key);
+          // Clean up typing timeouts for this user via indexed lookup (O(1) instead of O(MAX_TYPING))
+          const userKeys = state.typingTimeoutsByUser.get(socket.username);
+          if (userKeys) {
+            userKeys.forEach((key) => {
+              clearTimeout(state.typingTimeouts.get(key));
+              state.typingTimeouts.delete(key);
+            });
+            state.typingTimeoutsByUser.delete(socket.username);
           }
+        } else {
+          logger.info({ event: 'closed_tab', username: socket.username, remaining: sockets.size });
         }
-      } else {
-        state.onlineUsers.set(socket.username, remaining);
-        logger.info({ event: 'closed_tab', username: socket.username, remaining });
       }
     }
   }

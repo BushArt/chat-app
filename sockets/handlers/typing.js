@@ -19,11 +19,29 @@ module.exports = function createTypingHandlers(io, socket, state) {
       const oldestTimeout = state.typingTimeouts.get(oldestKey);
       clearTimeout(oldestTimeout);
       state.typingTimeouts.delete(oldestKey);
+      // Clean up the by-user index for evicted entries
+      for (const [user, keys] of state.typingTimeoutsByUser) {
+        if (keys.delete(oldestKey) && keys.size === 0) {
+          state.typingTimeoutsByUser.delete(user);
+          break;
+        }
+      }
     }
+    
+    // Track in by-user index for fast disconnect cleanup
+    if (!state.typingTimeoutsByUser.has(sender)) {
+      state.typingTimeoutsByUser.set(sender, new Set());
+    }
+    state.typingTimeoutsByUser.get(sender).add(key);
     
     state.typingTimeouts.set(key, setTimeout(() => {
       socket.to(room).emit('user_stopped_typing', { username: sender, room });
       state.typingTimeouts.delete(key);
+      const userKeys = state.typingTimeoutsByUser.get(sender);
+      if (userKeys) {
+        userKeys.delete(key);
+        if (userKeys.size === 0) state.typingTimeoutsByUser.delete(sender);
+      }
     }, state.TYPING_TIMEOUT));
   }
 
@@ -34,6 +52,11 @@ module.exports = function createTypingHandlers(io, socket, state) {
     const key = `${sender}:${room}`;
     clearTimeout(state.typingTimeouts.get(key));
     state.typingTimeouts.delete(key);
+    const userKeys = state.typingTimeoutsByUser.get(sender);
+    if (userKeys) {
+      userKeys.delete(key);
+      if (userKeys.size === 0) state.typingTimeoutsByUser.delete(sender);
+    }
 
     socket.to(room).emit('user_stopped_typing', { username: sender, room });
   }

@@ -9,6 +9,7 @@ describe("presence handlers", () => {
     state = {
       onlineUsers: new Map(),
       typingTimeouts: new Map(),
+      typingTimeoutsByUser: new Map(),
       getOnlineList: jest.fn().mockReturnValue([]),
     };
     messageAllowed = { cleanup: jest.fn() };
@@ -35,7 +36,7 @@ describe("presence handlers", () => {
 
     test("does not call socket.join when room is valid DM but doesn't contain socket's username", () => {
       const { handleJoinRoom } = createPresenceHandlers(io, socket, state, messageAllowed);
-      handleJoinRoom("bob_carol");
+      handleJoinRoom("bob:carol");
       expect(socket.join).not.toHaveBeenCalled();
     });
 
@@ -47,14 +48,14 @@ describe("presence handlers", () => {
 
     test("calls socket.join with roomId when socket.username is the first part of a DM room", () => {
       const { handleJoinRoom } = createPresenceHandlers(io, socket, state, messageAllowed);
-      handleJoinRoom("alice_bob");
-      expect(socket.join).toHaveBeenCalledWith("alice_bob");
+      handleJoinRoom("alice:bob");
+      expect(socket.join).toHaveBeenCalledWith("alice:bob");
     });
 
     test("calls socket.join with roomId when socket.username is the second part of a DM room", () => {
       const { handleJoinRoom } = createPresenceHandlers(io, socket, state, messageAllowed);
-      handleJoinRoom("bob_alice");
-      expect(socket.join).toHaveBeenCalledWith("bob_alice");
+      handleJoinRoom("bob:alice");
+      expect(socket.join).toHaveBeenCalledWith("bob:alice");
     });
   });
 
@@ -65,24 +66,21 @@ describe("presence handlers", () => {
       expect(messageAllowed.cleanup).toHaveBeenCalledTimes(1);
     });
 
-    test("decrements connection count for the username", () => {
-      state.onlineUsers.set("alice", 2);
-      const { handleDisconnect } = createPresenceHandlers(io, socket, state, messageAllowed);
-      handleDisconnect();
-      expect(state.onlineUsers.get("alice")).toBe(1);
-    });
-
-    test("does not remove user or broadcast when count drops to 1 or above", () => {
-      state.onlineUsers.set("alice", 2);
+    test("removes socket from user's Set and does not broadcast when other sockets remain", () => {
+      const sockets = new Set(['socket-2', 'socket-3']);
+      state.onlineUsers.set("alice", sockets);
       const { handleDisconnect } = createPresenceHandlers(io, socket, state, messageAllowed);
       handleDisconnect();
 
-      expect(state.onlineUsers.has("alice")).toBe(true);
+      expect(state.onlineUsers.get("alice")).toBe(sockets);
+      expect(sockets.has('socket-1')).toBe(false);
+      expect(sockets.size).toBe(2);
       expect(io.emit).not.toHaveBeenCalled();
     });
 
-    test("removes user and broadcasts online_users when count drops to 0", () => {
-      state.onlineUsers.set("alice", 1);
+    test("removes user and broadcasts online_users when last socket disconnects", () => {
+      const sockets = new Set(['socket-1']);
+      state.onlineUsers.set("alice", sockets);
       state.getOnlineList = jest.fn().mockReturnValue([]);
       const { handleDisconnect } = createPresenceHandlers(io, socket, state, messageAllowed);
       handleDisconnect();
@@ -92,16 +90,19 @@ describe("presence handlers", () => {
     });
 
     test("clears typingTimeouts entries where key starts with 'username:'", () => {
+      state.onlineUsers.set("alice", new Set(["socket-1"]));
       state.typingTimeouts.set("alice:global", 111);
-      state.typingTimeouts.set("alice:bob_room", 222);
+      state.typingTimeouts.set("alice:bob:room", 222);
       state.typingTimeouts.set("bob:global", 333);
+      state.typingTimeoutsByUser.set("alice", new Set(["alice:global", "alice:bob:room"]));
 
       const { handleDisconnect } = createPresenceHandlers(io, socket, state, messageAllowed);
       handleDisconnect();
 
       expect(state.typingTimeouts.has("alice:global")).toBe(false);
-      expect(state.typingTimeouts.has("alice:bob_room")).toBe(false);
+      expect(state.typingTimeouts.has("alice:bob:room")).toBe(false);
       expect(state.typingTimeouts.has("bob:global")).toBe(true);
+      expect(state.typingTimeoutsByUser.has("alice")).toBe(false);
     });
 
     test("does not throw when socket.username is falsy", () => {

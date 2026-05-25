@@ -10,6 +10,10 @@ const userSchema = new mongoose.Schema({
   password: {
     type: String,
     required: true
+  },
+  lastLogout: {
+    type: Date,
+    default: null
   }
 }, {
   timestamps: true

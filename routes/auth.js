@@ -170,4 +170,21 @@ router.post('/login', authLimiter, async (req, res, next) => {
   }
 });
 
+// ─────────────────────────────────────────
+// POST /auth/logout
+// Revokes all existing tokens by recording the logout timestamp.
+// ─────────────────────────────────────────
+const verifyToken = require('../middleware/auth');
+
+router.post('/logout', verifyToken, async (req, res, next) => {
+  try {
+    await User.findByIdAndUpdate(req.user.id, { lastLogout: new Date() });
+    logger.info({ event: 'logout', username: req.user.username });
+    res.json({ message: 'Logged out successfully.' });
+  } catch (err) {
+    logger.error({ event: 'logout_error', err: String(err) });
+    next(new HttpError('Server error during logout', 500, 'logout_failed'));
+  }
+});
+
 module.exports = router;

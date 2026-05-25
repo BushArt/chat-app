@@ -4,6 +4,7 @@
  */
 
 const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 const makeRateLimiter = require('../middleware/rateLimiter');
 
 const state = require('./state');
@@ -25,7 +26,19 @@ module.exports = function setupSockets(io) {
     try {
       const payload = jwt.verify(token, process.env.JWT_SECRET);
       socket.username = payload.username;
-      next();
+      // JWT revocation check
+      if (payload.iat) {
+        User.findById(payload.id).select('lastLogout').lean()
+          .then(user => {
+            if (user && user.lastLogout && payload.iat * 1000 < user.lastLogout.getTime()) {
+              return next(new Error('Token revoked'));
+            }
+            next();
+          })
+          .catch(() => next(new Error('Authentication error')));
+      } else {
+        next();
+      }
     } catch {
       next(new Error('Invalid or expired token'));
     }

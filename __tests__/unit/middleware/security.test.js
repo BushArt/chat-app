@@ -57,4 +57,12 @@ describe("securityHeaders middleware", () => {
     const result = securityHeaders(req, res, next);
     expect(result).toBeUndefined();
   });
+
+  test("sets Content-Security-Policy with connect-src for websockets", () => {
+    const { req, res, next } = createMocks();
+    securityHeaders(req, res, next);
+    const csp = res.headers["Content-Security-Policy"];
+    expect(csp).toContain("default-src 'self'");
+    expect(csp).toContain("connect-src 'self' ws: wss:");
+  });
 });

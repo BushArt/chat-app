@@ -3,11 +3,24 @@
  * Handles start_typing and stop_typing events
  */
 
+// Per-socket rate limit state: socket.id → { count, resetTimer }
+const typingRateLimits = new Map();
+
 module.exports = function createTypingHandlers(io, socket, state) {
 
   function handleStartTyping({ room }) {
     const sender = socket.username;
     if (!sender || !room || typeof room !== 'string') return;
+
+    // Rate limit: max 30 typing events per 60 seconds per socket
+    const now = Date.now();
+    let limit = typingRateLimits.get(socket.id);
+    if (!limit || now >= limit.resetAt) {
+      limit = { count: 0, resetAt: now + 60000 };
+      typingRateLimits.set(socket.id, limit);
+    }
+    limit.count++;
+    if (limit.count > 30) return;
 
     const key = `${sender}:${room}`;
     socket.to(room).emit('user_typing', { username: sender, room });

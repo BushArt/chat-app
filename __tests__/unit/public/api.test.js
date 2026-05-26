@@ -94,6 +94,28 @@ describe('fetchGlobalHistory', () => {
     });
     expect(result).toEqual([{ sender: 'alice', message: 'hello' }]);
   });
+
+  test('throws on non-ok response for fetchGlobalHistory', async () => {
+    state.setCurrentToken('test-token');
+    global.fetch.mockResolvedValue({
+      ok: false,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ error: 'Server error' })
+    });
+
+    await expect(api.fetchGlobalHistory()).rejects.toThrow('Network response was not ok');
+  });
+
+  test('throws on non-JSON content-type for fetchGlobalHistory', async () => {
+    state.setCurrentToken('test-token');
+    global.fetch.mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'text/html' },
+      json: async () => '[{ "sender": "alice" }]'
+    });
+
+    await expect(api.fetchGlobalHistory()).rejects.toThrow('Invalid JSON response');
+  });
 });
 
 describe('fetchPrivateHistory', () => {
@@ -109,5 +131,27 @@ describe('fetchPrivateHistory', () => {
       headers: { Authorization: 'Bearer test-token' }
     });
     expect(result).toEqual([{ sender: 'alice', message: 'hi' }]);
+  });
+
+  test('throws on non-ok response for fetchPrivateHistory', async () => {
+    state.setCurrentToken('test-token');
+    global.fetch.mockResolvedValue({
+      ok: false,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ error: 'Not found' })
+    });
+
+    await expect(api.fetchPrivateHistory('alice', 'bob')).rejects.toThrow('Network response was not ok');
+  });
+
+  test('throws on non-JSON content-type for fetchPrivateHistory', async () => {
+    state.setCurrentToken('test-token');
+    global.fetch.mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'text/plain' },
+      json: async () => '[{ "sender": "alice" }]'
+    });
+
+    await expect(api.fetchPrivateHistory('alice', 'bob')).rejects.toThrow('Invalid JSON response');
   });
 });

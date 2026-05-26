@@ -124,11 +124,65 @@ describe("sync handler", () => {
     expect(ack).toHaveBeenCalledWith({ status: 'ok', count: docsDesc.length });
   });
 
-  test("sends error and ack when DB throws", async () => {
+  test("sends error and ack when DB throws (global)", async () => {
     Message.find = jest.fn().mockReturnValue({ sort: jest.fn().mockReturnThis(), limit: jest.fn().mockRejectedValue(new Error('DB error')) });
     const ack = jest.fn();
     await handler({}, ack);
     expect(socket.emit).toHaveBeenCalledWith('error_message', { error: 'Server error during global sync', code: 'global_sync_failed' });
     expect(ack).toHaveBeenCalledWith(expect.objectContaining({ status: 'error' }));
+  });
+
+  test("continues when messageAllowed throws", async () => {
+    messageAllowed.mockImplementation(() => {
+      throw new Error('Limiter crashed');
+    });
+    Message.find = jest.fn().mockReturnValue({ sort: jest.fn().mockReturnThis(), limit: jest.fn().mockResolvedValue([]) });
+    const ack = jest.fn();
+    await expect(handler({}, ack)).resolves.toBeUndefined();
+    // Should continue past the limiter error and execute the global sync path
+    expect(Message.find).toHaveBeenCalled();
+  });
+
+  test("private sync with self as peer returns error", async () => {
+    const ack = jest.fn();
+    await handler({ type: 'private', with: 'alice' }, ack);
+    expect(socket.emit).toHaveBeenCalledWith('error_message', { error: 'Cannot sync private messages with yourself', code: 'invalid_peer' });
+    expect(ack).toHaveBeenCalledWith(expect.objectContaining({ status: 'error', code: 'invalid_peer' }));
+  });
+
+  test("private sync with lastSeenAt filters by createdAt", async () => {
+    const docs = [
+      { sender: 'bob', receiver: 'alice', message: 'after logout', createdAt: new Date('2026-05-10T00:00:00Z'), clientId: 'c1', _id: 'm1' }
+    ];
+    const chainable = {
+      where: jest.fn().mockReturnThis(),
+      gt: jest.fn().mockReturnThis(),
+      sort: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockResolvedValue(docs),
+    };
+    Message.find = jest.fn().mockReturnValue(chainable);
+
+    const ack = jest.fn();
+    const lastSeen = new Date('2026-05-05T00:00:00Z');
+    await handler({ type: 'private', with: 'bob', lastSeenAt: lastSeen.toISOString() }, ack);
+
+    expect(chainable.where).toHaveBeenCalledWith('createdAt');
+    expect(chainable.gt).toHaveBeenCalledWith(lastSeen);
+    expect(ack).toHaveBeenCalledWith({ status: 'ok', count: docs.length });
+  });
+
+  test("private sync handles DB error", async () => {
+    Message.find = jest.fn().mockReturnValue({ where: jest.fn().mockReturnThis(), sort: jest.fn().mockReturnThis(), limit: jest.fn().mockRejectedValue(new Error('Private DB error')) });
+    const ack = jest.fn();
+    await handler({ type: 'private', with: 'bob' }, ack);
+    expect(socket.emit).toHaveBeenCalledWith('error_message', { error: 'Server error during private sync', code: 'private_sync_failed' });
+    expect(ack).toHaveBeenCalledWith(expect.objectContaining({ status: 'error', code: 'private_sync_failed' }));
+  });
+
+  test("ack error in rate-limited path is caught and logged", async () => {
+    messageAllowed.mockReturnValue(false);
+    const ack = jest.fn(() => { throw new Error('ack failure'); });
+    await expect(handler({ lastSeenAt: new Date().toISOString() }, ack)).resolves.toBeUndefined();
+    expect(socket.emit).toHaveBeenCalledWith('error_message', expect.anything());
   });
 });

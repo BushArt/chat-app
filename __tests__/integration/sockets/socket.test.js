@@ -6,6 +6,13 @@ const state = require("../../../sockets/state");
 
 // â”€â”€ Mocks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 jest.mock("jsonwebtoken");
+jest.mock("../../../models/User", () => ({
+  findById: jest.fn(() => ({
+    select: jest.fn(() => ({
+      lean: jest.fn().mockResolvedValue({ lastLogout: null })
+    }))
+  }))
+}));
 
 // Mock the rate limiter factory â€” returns a limiter function with cleanup
 // The limiter function itself doubles as the isAllowed check
@@ -94,10 +101,18 @@ describe("Socket.IO integration", () => {
     state.onlineUsers.clear();
     state.typingTimeouts.clear();
     clients = [];
-    jest.clearAllMocks();
-    Message.mockClear();
-    // Re-set jwt.verify mock after clearAllMocks
+    // Clear call counts without resetting implementations
+    jwt.verify.mockClear();
     jwt.verify.mockReturnValue({ id: "user1", username: "alice" });
+    Message.mockClear();
+    // User mock chain for JWT revocation check: User.findById().select().lean()
+    const User = require("../../../models/User");
+    User.findById.mockClear();
+    User.findById.mockReturnValue({
+      select: jest.fn(() => ({
+        lean: jest.fn().mockResolvedValue({ lastLogout: null })
+      }))
+    });
   });
 
   afterEach(() => {
@@ -177,6 +192,58 @@ describe("Socket.IO integration", () => {
 
       expect(connectionCount).toBe(0);
       io.off("connection", handler);
+    });
+
+    test("rejects connection when User.findById fails (DB error in revocation)", async () => {
+      jwt.verify.mockReturnValue({ id: "user1", username: "alice", iat: Math.floor(Date.now() / 1000) });
+      const User = require("../../../models/User");
+      User.findById.mockReturnValue({
+        select: jest.fn(() => ({
+          lean: jest.fn().mockRejectedValue(new Error("DB error"))
+        }))
+      });
+
+      const client = track(connectClient(port, "valid-jwt"));
+      const err = await waitForEvent(client, "connect_error");
+      expect(err).toBeDefined();
+    });
+
+    test("connects when token has no iat field (skips revocation check)", async () => {
+      jwt.verify.mockReturnValue({ id: "user1", username: "alice" });
+      // No iat — should skip the User.findById call entirely
+      const client = track(connectClient(port, "no-iat-token"));
+      await waitForEvent(client, "connect");
+      expect(client.connected).toBe(true);
+    });
+
+    test("rejects connection when token is revoked (lastLogout after iat)", async () => {
+      const pastIat = Math.floor(Date.now() / 1000) - 3600; // 1 hour ago
+      jwt.verify.mockReturnValue({ id: "user1", username: "alice", iat: pastIat });
+      const User = require("../../../models/User");
+      User.findById.mockReturnValue({
+        select: jest.fn(() => ({
+          lean: jest.fn().mockResolvedValue({ lastLogout: new Date() })
+        }))
+      });
+
+      const client = track(connectClient(port, "revoked-token"));
+      const err = await waitForEvent(client, "connect_error");
+      expect(err.message).toBe("Token revoked");
+    });
+
+    test("connects when token iat is after lastLogout (not revoked)", async () => {
+      const recentIat = Math.floor(Date.now() / 1000);
+      jwt.verify.mockReturnValue({ id: "user1", username: "alice", iat: recentIat });
+      const User = require("../../../models/User");
+      User.findById.mockReturnValue({
+        select: jest.fn(() => ({
+          lean: jest.fn().mockResolvedValue({ lastLogout: new Date(Date.now() - 86400000) })
+        }))
+      });
+
+      const client = track(connectClient(port, "valid-iat-token"));
+      await waitForEvent(client, "connect");
+      expect(client.connected).toBe(true);
     });
   });
 

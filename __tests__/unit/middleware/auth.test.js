@@ -1,6 +1,8 @@
 const jwt = require("jsonwebtoken");
 jest.mock("jsonwebtoken");
+jest.mock("../../../models/User");
 
+const User = require("../../../models/User");
 const verifyToken = require("../../../middleware/auth");
 
 beforeAll(() => {
@@ -144,5 +146,85 @@ describe("verifyToken middleware", () => {
     verifyToken(req, res, next);
 
     expect(jwt.verify).toHaveBeenCalledWith("my-raw-token", expect.any(String));
+  });
+
+  // -----------------------------------------------------------------------
+  // JWT revocation checks (iat vs lastLogout)
+  // -----------------------------------------------------------------------
+  test("passes through when token has no iat claim", () => {
+    jwt.verify.mockReturnValue({ id: "user1", username: "alice" });
+    const { req, res, next } = createMocks();
+    req.headers["authorization"] = "Bearer valid.jwt.token";
+    verifyToken(req, res, next);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next.mock.calls[0][0]).toBeUndefined();
+    expect(User.findById).not.toHaveBeenCalled();
+  });
+
+  test("passes through when user has no lastLogout", async () => {
+    User.findById.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockResolvedValue({ lastLogout: null })
+    });
+    jwt.verify.mockReturnValue({ id: "user1", username: "alice", iat: 1000 });
+    const { req, res, next } = createMocks();
+    req.headers["authorization"] = "Bearer valid.jwt.token";
+    verifyToken(req, res, next);
+    // Flush pending promise chain
+    await new Promise(process.nextTick);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next.mock.calls[0][0]).toBeUndefined();
+  });
+
+  test("passes through when token iat is after lastLogout", async () => {
+    const later = Math.floor(Date.now() / 1000);
+    User.findById.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockResolvedValue({ lastLogout: new Date(later * 1000 - 3600000) })
+    });
+    jwt.verify.mockReturnValue({ id: "user1", username: "alice", iat: later });
+    const { req, res, next } = createMocks();
+    req.headers["authorization"] = "Bearer valid.jwt.token";
+    verifyToken(req, res, next);
+    await new Promise(process.nextTick);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next.mock.calls[0][0]).toBeUndefined();
+  });
+
+  test("rejects token when iat is before lastLogout", async () => {
+    const logoutTime = new Date();
+    const iatBeforeLogout = Math.floor(logoutTime.getTime() / 1000) - 3600;
+    User.findById.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockResolvedValue({ lastLogout: logoutTime })
+    });
+    jwt.verify.mockReturnValue({ id: "user1", username: "alice", iat: iatBeforeLogout });
+    const { req, res, next } = createMocks();
+    req.headers["authorization"] = "Bearer valid.jwt.token";
+    verifyToken(req, res, next);
+    await new Promise(process.nextTick);
+    expect(next).toHaveBeenCalledTimes(1);
+    const err = next.mock.calls[0][0];
+    expect(err.status).toBe(403);
+    expect(err.code).toBe("token_revoked");
+  });
+
+  test("returns 500 when User.findById fails", async () => {
+    const rejectPromise = Promise.reject(new Error("DB down"));
+    // Suppress unhandled rejection (it's caught by .catch in the middleware)
+    rejectPromise.catch(() => {});
+    User.findById.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockReturnValue(rejectPromise)
+    });
+    jwt.verify.mockReturnValue({ id: "user1", username: "alice", iat: 1000 });
+    const { req, res, next } = createMocks();
+    req.headers["authorization"] = "Bearer valid.jwt.token";
+    verifyToken(req, res, next);
+    await new Promise(process.nextTick);
+    expect(next).toHaveBeenCalledTimes(1);
+    const err = next.mock.calls[0][0];
+    expect(err.status).toBe(500);
+    expect(err.code).toBe("auth_error");
   });
 });

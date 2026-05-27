@@ -3,7 +3,6 @@
  * Handles start_typing and stop_typing events
  */
 
-// Per-socket rate limit state: socket.id → { count, resetTimer }
 const typingRateLimits = new Map();
 
 module.exports = function createTypingHandlers(io, socket, state) {

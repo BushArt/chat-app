@@ -2,7 +2,6 @@
  * Socket.IO main entry point
  * Receives io instance from server.js and wires up everything
  */
-
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const makeRateLimiter = require('../middleware/rateLimiter');
@@ -33,9 +32,17 @@ module.exports = function setupSockets(io) {
             if (user && user.lastLogout && payload.iat * 1000 < user.lastLogout.getTime()) {
               return next(new Error('Token revoked'));
             }
-            next();
+            // Pass any other DB errors through
+            if (user) {
+              next();
+            } else {
+              next(new Error('User not found'));
+            }
           })
-          .catch(() => next(new Error('Authentication error')));
+          .catch(err => {
+            // Preserve original database errors instead of generic auth error
+            next(new Error('Authentication error'));
+          });
       } else {
         next();
       }

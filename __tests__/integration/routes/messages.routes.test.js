@@ -297,24 +297,4 @@ describe("GET /messages/:user1/:user2", () => {
     expect(res.body).toHaveProperty("error");
     expect(res.body.code).toBe("private_messages_fetch_failed");
   });
-});</arg_value>
-<task_progress>
-- [x] Task A: CSP - Add connect-src directive to middleware/security.js
-- [x] Task B: JWT revocation - Models, routes, middleware
-- [x] Task C: Socket typing rate limiting - sockets/handlers/typing.js
-- [x] Extend security middleware tests for CSP assertion
-- [x] Auth middleware: added 5 JWT revocation path tests (now 100% coverage)
-- [x] Security middleware: added CSP assertion test
-- [x] Config/env: comprehensive validation tests (6 tests)
-- [x] Socket integration test: add User mock for revocation check (fixes timeout)
-- [x] Verify coverage meets 80% threshold (achieved 80.32%)
-- [ ] Add DB error test for GET /messages/global
-- [ ] Add DB error test for GET /messages/:user1/:user2
-- [ ] Add JWT_SECRET missing test for login
-- [ ] Add logout DB error test
-- [ ] Add register non-duplicate error test
-- [ ] Add api.js non-ok and content-type tests
-- [ ] Add ui.js edge case tests
-- [ ] Verify final coverage
-</task_progress>
-</write_to_file>
+});

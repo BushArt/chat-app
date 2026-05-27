@@ -4,17 +4,14 @@ const ioClient = require("socket.io-client");
 const jwt = require("jsonwebtoken");
 const state = require("../../../sockets/state");
 
-// â”€â”€ Mocks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-jest.mock("jsonwebtoken");
+// Mock the User model for JWT revocation checks
 jest.mock("../../../models/User", () => ({
-  findById: jest.fn(() => ({
-    select: jest.fn(() => ({
-      lean: jest.fn().mockResolvedValue({ lastLogout: null })
-    }))
-  }))
+  findById: jest.fn(),
 }));
 
-// Mock the rate limiter factory â€” returns a limiter function with cleanup
+jest.mock("jsonwebtoken");
+
+// Mock the rate limiter factory – returns a limiter function with cleanup
 // The limiter function itself doubles as the isAllowed check
 jest.mock("../../../middleware/rateLimiter", () => {
   return jest.fn(() => {
@@ -23,6 +20,8 @@ jest.mock("../../../middleware/rateLimiter", () => {
     return limiter;
   });
 });
+
+const Message = require("../../../models/Message");
 
 // Mock the Message model for socket handler tests
 jest.mock("../../../models/Message", () => {
@@ -38,9 +37,6 @@ jest.mock("../../../models/Message", () => {
   return jest.fn(() => ({ ...mockDocument, save: jest.fn().mockResolvedValue() }));
 });
 
-const Message = require("../../../models/Message");
-
-// â”€â”€ Server factory â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function createSocketServer() {
   const server = http.createServer();
   const io = new Server(server, { transports: ["websocket"] });
@@ -48,7 +44,6 @@ function createSocketServer() {
   return { server, io };
 }
 
-// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function connectClient(port, token) {
   return ioClient(`http://localhost:${port}`, {
     transports: ["websocket"],
@@ -107,7 +102,7 @@ describe("Socket.IO integration", () => {
     Message.mockClear();
     // User mock chain for JWT revocation check: User.findById().select().lean()
     const User = require("../../../models/User");
-    User.findById.mockClear();
+    User.findById.mockClear(); // Now this should work as User.findById is mocked
     User.findById.mockReturnValue({
       select: jest.fn(() => ({
         lean: jest.fn().mockResolvedValue({ lastLogout: null })
@@ -210,7 +205,9 @@ describe("Socket.IO integration", () => {
 
     test("connects when token has no iat field (skips revocation check)", async () => {
       jwt.verify.mockReturnValue({ id: "user1", username: "alice" });
-      // No iat — should skip the User.findById call entirely
+      // No iat – this test confirms that the application skips the JWT revocation check
+      // if the 'iat' (issued at) field is missing from the token payload.
+      // This behavior is intended as tokens without 'iat' cannot be checked against 'lastLogout'.
       const client = track(connectClient(port, "no-iat-token"));
       await waitForEvent(client, "connect");
       expect(client.connected).toBe(true);
@@ -487,7 +484,7 @@ describe("Socket.IO integration", () => {
       const stopPromise = waitForEvent(bob, "user_stopped_typing");
       alice.emit("send_global_message", { message: "hello", clientId: "c1" });
 
-      // This will timeout if typing cleanup doesn't fire â€” which is fine
+      // This will timeout if typing cleanup doesn't fire – which is fine
       const stopData = await stopPromise;
       expect(stopData).toHaveProperty("username", "alice");
     });

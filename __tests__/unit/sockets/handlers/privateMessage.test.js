@@ -1,6 +1,8 @@
 jest.mock("../../../../models/Message");
+jest.mock("../../../../models/User");
 
 const Message = require("../../../../models/Message");
+const User = require("../../../../models/User");
 const createPrivateMessageHandler = require("../../../../sockets/handlers/privateMessage");
 
 describe("privateMessage handler", () => {
@@ -21,13 +23,19 @@ describe("privateMessage handler", () => {
     createMocks();
     Message.mockClear();
 
-const mockDocument = {
-  sender: "alice",
-  receiver: "bob",
-  message: "hello",
-  isGlobal: false,
-  clientId: "abc",
-  room: "alice:bob",
+    // Mock User.findOne to return a user with a displayName
+    User.findOne.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockResolvedValue({ username: "alice", displayName: "Alice" }),
+    });
+
+    const mockDocument = {
+      sender: "alice",
+      receiver: "bob",
+      message: "hello",
+      isGlobal: false,
+      clientId: "abc",
+      room: "alice:bob",
       createdAt: new Date("2026-05-17T12:00:00Z"),
       save: jest.fn().mockResolvedValue(),
     };
@@ -106,7 +114,7 @@ const mockDocument = {
   // -----------------------------------------------------------------------
   // Database write and broadcast
   // -----------------------------------------------------------------------
-  test("creates a Message document with isGlobal: false and correct receiver", async () => {
+  test("creates a Message document with isGlobal: false, correct receiver, and senderDisplayName", async () => {
     const mockDoc = { save: jest.fn().mockResolvedValue(), sender: "alice", receiver: "bob", message: "hi", isGlobal: false, clientId: "c1", room: "alice:bob", createdAt: new Date() };
     Message.mockImplementation(() => mockDoc);
 
@@ -118,6 +126,7 @@ const mockDocument = {
       message: "hi",
       isGlobal: false,
       clientId: "c1",
+      senderDisplayName: "Alice",
     });
   });
 
@@ -135,6 +144,7 @@ const mockDocument = {
       createdAt,
       room: "alice:bob",
       clientId: "c1",
+      senderDisplayName: "Alice",
     });
   });
 

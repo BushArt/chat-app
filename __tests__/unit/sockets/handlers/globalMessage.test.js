@@ -1,6 +1,8 @@
 jest.mock("../../../../models/Message");
+jest.mock("../../../../models/User");
 
 const Message = require("../../../../models/Message");
+const User = require("../../../../models/User");
 const createGlobalMessageHandler = require("../../../../sockets/handlers/globalMessage");
 
 describe("globalMessage handler", () => {
@@ -21,6 +23,12 @@ describe("globalMessage handler", () => {
     jest.clearAllMocks();
     createMocks();
     Message.mockClear();
+
+    // Mock User.findOne to return a user with a displayName
+    User.findOne.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockResolvedValue({ username: "alice", displayName: "Alice" }),
+    });
 
     // Make Message constructor return a mock document with a mock save()
     const mockDocument = {
@@ -163,7 +171,7 @@ describe("globalMessage handler", () => {
   // -----------------------------------------------------------------------
   // Database write and broadcast
   // -----------------------------------------------------------------------
-  test("creates a Message document with correct fields", async () => {
+  test("creates a Message document with correct fields including senderDisplayName", async () => {
     const mockDoc = { save: jest.fn().mockResolvedValue(), sender: "alice", message: "hello", isGlobal: true, clientId: "client-1", createdAt: new Date() };
     Message.mockImplementation(() => mockDoc);
 
@@ -174,6 +182,7 @@ describe("globalMessage handler", () => {
       message: "hello",
       isGlobal: true,
       clientId: "client-1",
+      senderDisplayName: "Alice",
     });
   });
 
@@ -185,7 +194,7 @@ describe("globalMessage handler", () => {
     expect(saveMock).toHaveBeenCalledTimes(1);
   });
 
-  test("broadcasts receive_global_message to the global room", async () => {
+  test("broadcasts receive_global_message with senderDisplayName to the global room", async () => {
     const createdAt = new Date("2026-05-17T12:34:56Z");
     const mockDoc = { save: jest.fn().mockResolvedValue(), sender: "alice", message: "hello", isGlobal: true, clientId: "client-1", createdAt };
     Message.mockImplementation(() => mockDoc);
@@ -198,6 +207,7 @@ describe("globalMessage handler", () => {
       message: "hello",
       createdAt,
       clientId: "client-1",
+      senderDisplayName: "Alice",
     });
   });
 

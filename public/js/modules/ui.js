@@ -164,10 +164,10 @@ export function appendSystem(containerId, text) {
   updateJumpButton(container);
 }
 
-export function appendHistoryBatch(containerId, history) {
+export function appendHistoryBatch(containerId, history, mode = 'replace') {
   const container = document.getElementById(containerId);
   const fragment = document.createDocumentFragment();
-  let lastDate = container.dataset.lastDate || "";
+  let lastDate = mode === 'prepend' ? container.dataset.lastDate || "" : "";
   history.forEach((msg) => {
     if (!msg || typeof msg.message !== "string") return;
     if (!msg.createdAt || Number.isNaN(new Date(msg.createdAt).getTime())) return;
@@ -182,8 +182,70 @@ export function appendHistoryBatch(containerId, history) {
   if (lastDate) {
     container.dataset.lastDate = lastDate;
   }
-  container.appendChild(fragment);
-  utils.scrollToBottom(container);
+  if (mode === 'prepend') {
+    const prevScrollHeight = container.scrollHeight;
+    container.insertBefore(fragment, container.firstChild);
+    container.scrollTop = container.scrollHeight - prevScrollHeight;
+  } else {
+    container.appendChild(fragment);
+    utils.scrollToBottom(container);
+  }
+}
+
+/**
+ * Show or hide the "Load earlier messages" button at the top of a message container.
+ */
+export function updateLoadMoreButton(containerId, hasMore, loadCallback) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  let btn = container.querySelector('.load-more-btn');
+  if (!hasMore) {
+    if (btn) btn.remove();
+    return;
+  }
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.className = 'load-more-btn';
+    btn.textContent = 'Load earlier messages';
+    btn.type = 'button';
+    container.insertBefore(btn, container.firstChild);
+  }
+  btn.onclick = loadCallback;
+}
+
+/**
+ * Set up a scroll sentinel on a message container that triggers a load-more
+ * callback when the user scrolls to the top. Only fires when hasMore is true
+ * and no load is already in progress.
+ */
+export function setupScrollPagination(containerId, loadMore) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.addEventListener('scroll', () => {
+    if (container.scrollTop <= 5 && !container.dataset.loading && container.dataset.hasMore === 'true') {
+      loadMore();
+    }
+  });
+}
+
+/**
+ * Mark a container as currently loading (prevents duplicate triggers).
+ */
+export function setLoading(containerId, loading) {
+  const container = document.getElementById(containerId);
+  if (container) {
+    container.dataset.loading = loading ? 'true' : 'false';
+  }
+}
+
+/**
+ * Store whether more pages exist for a given container.
+ */
+export function setHasMore(containerId, hasMore) {
+  const container = document.getElementById(containerId);
+  if (container) {
+    container.dataset.hasMore = hasMore ? 'true' : 'false';
+  }
 }
 
 export function updateCharCounter(textarea, counterEl, sendButton) {

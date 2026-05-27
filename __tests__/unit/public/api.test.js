@@ -81,18 +81,31 @@ describe('login', () => {
 });
 
 describe('fetchGlobalHistory', () => {
-  test('sends GET to /messages/global with Bearer token', async () => {
+  test('sends GET to /messages/global with Bearer token and no before param', async () => {
     state.setCurrentToken('test-token');
     global.fetch.mockResolvedValue({
       ok: true,
-      json: async () => [{ sender: 'alice', message: 'hello' }]
+      json: async () => ({ messages: [{ sender: 'alice', message: 'hello' }], hasMore: false, cursor: null })
     });
 
     const result = await api.fetchGlobalHistory();
     expect(fetch).toHaveBeenCalledWith('/messages/global', {
       headers: { Authorization: 'Bearer test-token' }
     });
-    expect(result).toEqual([{ sender: 'alice', message: 'hello' }]);
+    expect(result).toEqual({ messages: [{ sender: 'alice', message: 'hello' }], hasMore: false, cursor: null });
+  });
+
+  test('sends GET with before param when provided', async () => {
+    state.setCurrentToken('test-token');
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ messages: [], hasMore: false, cursor: null })
+    });
+
+    const result = await api.fetchGlobalHistory('abc123');
+    expect(fetch).toHaveBeenCalledWith('/messages/global?before=abc123', {
+      headers: { Authorization: 'Bearer test-token' }
+    });
   });
 
   test('throws on non-ok response for fetchGlobalHistory', async () => {
@@ -111,7 +124,7 @@ describe('fetchGlobalHistory', () => {
     global.fetch.mockResolvedValue({
       ok: true,
       headers: { get: () => 'text/html' },
-      json: async () => '[{ "sender": "alice" }]'
+      json: async () => '{}'
     });
 
     await expect(api.fetchGlobalHistory()).rejects.toThrow('Invalid JSON response');
@@ -119,18 +132,31 @@ describe('fetchGlobalHistory', () => {
 });
 
 describe('fetchPrivateHistory', () => {
-  test('sends GET with encoded usernames and Bearer token', async () => {
+  test('sends GET with encoded usernames, Bearer token, and no before param', async () => {
     state.setCurrentToken('test-token');
     global.fetch.mockResolvedValue({
       ok: true,
-      json: async () => [{ sender: 'alice', message: 'hi' }]
+      json: async () => ({ messages: [{ sender: 'alice', message: 'hi' }], hasMore: false, cursor: null })
     });
 
     const result = await api.fetchPrivateHistory('alice', 'bob');
     expect(fetch).toHaveBeenCalledWith('/messages/alice/bob', {
       headers: { Authorization: 'Bearer test-token' }
     });
-    expect(result).toEqual([{ sender: 'alice', message: 'hi' }]);
+    expect(result).toEqual({ messages: [{ sender: 'alice', message: 'hi' }], hasMore: false, cursor: null });
+  });
+
+  test('sends GET with before param when provided', async () => {
+    state.setCurrentToken('test-token');
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ messages: [], hasMore: false, cursor: null })
+    });
+
+    const result = await api.fetchPrivateHistory('alice', 'bob', 'xyz789');
+    expect(fetch).toHaveBeenCalledWith('/messages/alice/bob?before=xyz789', {
+      headers: { Authorization: 'Bearer test-token' }
+    });
   });
 
   test('throws on non-ok response for fetchPrivateHistory', async () => {
@@ -149,7 +175,7 @@ describe('fetchPrivateHistory', () => {
     global.fetch.mockResolvedValue({
       ok: true,
       headers: { get: () => 'text/plain' },
-      json: async () => '[{ "sender": "alice" }]'
+      json: async () => '{}'
     });
 
     await expect(api.fetchPrivateHistory('alice', 'bob')).rejects.toThrow('Invalid JSON response');

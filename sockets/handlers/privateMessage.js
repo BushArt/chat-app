@@ -3,6 +3,7 @@
  */
 
 const Message = require('../../models/Message');
+const User = require('../../models/User');
 const logger = require('../../utils/logger');
 const emitError = require('../../utils/socketError');
 const HttpError = require('../../utils/HttpError');
@@ -38,12 +39,24 @@ module.exports = function createPrivateMessageHandler(io, socket, state, message
     socket.to(room).emit('user_stopped_typing', { username: sender, room });
 
     try {
+      // Look up the sender's display name for denormalization
+      let senderDisplayName = '';
+      try {
+        const senderUser = await User.findOne({ username: sender }).select('displayName').lean();
+        if (senderUser && senderUser.displayName) {
+          senderDisplayName = senderUser.displayName;
+        }
+      } catch {
+        // Silently fall back to empty string if lookup fails
+      }
+
       const newMessage = new Message({
         sender,
         receiver,
         message: sanitizedMessage.trim(),
         isGlobal: false,
-        clientId: data.clientId
+        clientId: data.clientId,
+        senderDisplayName
       });
       await newMessage.save();
 
@@ -52,7 +65,8 @@ module.exports = function createPrivateMessageHandler(io, socket, state, message
         message: sanitizedMessage.trim(),
         createdAt: newMessage.createdAt,
         room,
-        clientId: newMessage.clientId
+        clientId: newMessage.clientId,
+        senderDisplayName
       };
 
       if (socket && socket.connected && typeof ack === 'function') {

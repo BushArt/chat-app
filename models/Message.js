@@ -20,6 +20,10 @@ const messageSchema = new mongoose.Schema({
   clientId: {
     type: String,
     default: null
+  },
+  senderDisplayName: {
+    type: String,
+    default: ''
   }
 }, {
   timestamps: true

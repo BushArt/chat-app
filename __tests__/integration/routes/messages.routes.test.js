@@ -89,7 +89,7 @@ describe("GET /messages/global", () => {
     expect(res.status).toBe(200);
   });
 
-  test("returns a JSON array", async () => {
+  test("returns a paginated response shape", async () => {
     jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
     Message.find.mockReturnValue(mockChain([]));
 
@@ -97,10 +97,14 @@ describe("GET /messages/global", () => {
     const res = await request(app)
       .get("/messages/global")
       .set("Authorization", "Bearer valid-token");
-    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body).toHaveProperty("messages");
+    expect(res.body).toHaveProperty("hasMore");
+    expect(res.body).toHaveProperty("cursor");
+    expect(Array.isArray(res.body.messages)).toBe(true);
+    expect(typeof res.body.hasMore).toBe("boolean");
   });
 
-  test("each element has sender, message, createdAt, and clientId", async () => {
+  test("each element in messages has sender, message, createdAt, and clientId", async () => {
     const messages = [
       {
         sender: "alice",
@@ -118,13 +122,13 @@ describe("GET /messages/global", () => {
       .get("/messages/global")
       .set("Authorization", "Bearer valid-token");
 
-    expect(res.body[0]).toHaveProperty("sender");
-    expect(res.body[0]).toHaveProperty("message");
-    expect(res.body[0]).toHaveProperty("createdAt");
-    expect(res.body[0]).toHaveProperty("clientId");
+    expect(res.body.messages[0]).toHaveProperty("sender");
+    expect(res.body.messages[0]).toHaveProperty("message");
+    expect(res.body.messages[0]).toHaveProperty("createdAt");
+    expect(res.body.messages[0]).toHaveProperty("clientId");
   });
 
-  test("returns empty array when no global messages exist", async () => {
+  test("returns empty messages array when no global messages exist", async () => {
     jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
     Message.find.mockReturnValue(mockChain([]));
 
@@ -132,7 +136,109 @@ describe("GET /messages/global", () => {
     const res = await request(app)
       .get("/messages/global")
       .set("Authorization", "Bearer valid-token");
-    expect(res.body).toEqual([]);
+    expect(res.body.messages).toEqual([]);
+    expect(res.body.hasMore).toBe(false);
+    expect(res.body.cursor).toBeNull();
+  });
+
+  test("returns hasMore=true when limit is reached", async () => {
+    const manyMsgs = Array.from({ length: 100 }, (_, i) => ({
+      sender: "alice",
+      message: `msg-${i}`,
+      createdAt: new Date(`2026-05-17T12:00:${String(i).padStart(2, '0')}Z`),
+      clientId: `c${i}`,
+      _id: `id${String(i).padStart(24, '0')}`,
+    }));
+    jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
+    Message.find.mockReturnValue(mockChain(manyMsgs));
+
+    const app = createApp();
+    const res = await request(app)
+      .get("/messages/global")
+      .set("Authorization", "Bearer valid-token");
+    expect(res.body.messages.length).toBe(100);
+    expect(res.body.hasMore).toBe(true);
+    expect(res.body.cursor).toBeTruthy();
+  });
+
+  test("returns hasMore=false when results are fewer than limit", async () => {
+    const fewMsgs = Array.from({ length: 50 }, (_, i) => ({
+      sender: "alice",
+      message: `msg-${i}`,
+      createdAt: new Date(`2026-05-17T12:00:${String(i).padStart(2, '0')}Z`),
+      clientId: `c${i}`,
+      _id: `id${String(i).padStart(24, '0')}`,
+    }));
+    jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
+    Message.find.mockReturnValue(mockChain(fewMsgs));
+
+    const app = createApp();
+    const res = await request(app)
+      .get("/messages/global")
+      .set("Authorization", "Bearer valid-token");
+    expect(res.body.messages.length).toBe(50);
+    expect(res.body.hasMore).toBe(false);
+    expect(res.body.cursor).toBeNull();
+  });
+
+  // ── Pagination via `before` parameter ────────────────────────────
+  test("returns 400 when `before` is an invalid format", async () => {
+    jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
+
+    const app = createApp();
+    const res = await request(app)
+      .get("/messages/global?before=not-a-valid-cursor")
+      .set("Authorization", "Bearer valid-token");
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty("error");
+    expect(res.body.code).toBe("invalid_pagination_cursor");
+  });
+
+  test("returns 400 when `before` is a numeric string (not valid ObjectId or ISO)", async () => {
+    jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
+
+    const app = createApp();
+    const res = await request(app)
+      .get("/messages/global?before=12345")
+      .set("Authorization", "Bearer valid-token");
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("invalid_pagination_cursor");
+  });
+
+  test("passes `before` as ObjectId filter when valid 24-hex string is provided", async () => {
+    jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
+    const mockSort = jest.fn().mockReturnThis();
+    const mockLimit = jest.fn().mockResolvedValue([]);
+    Message.find.mockReturnValue({ sort: mockSort, limit: mockLimit });
+
+    const app = createApp();
+    const res = await request(app)
+      .get("/messages/global?before=507f1f77bcf86cd799439011")
+      .set("Authorization", "Bearer valid-token");
+
+    expect(Message.find).toHaveBeenCalledWith({
+      isGlobal: true,
+      _id: { $lt: expect.any(Object) },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  test("passes `before` as createdAt filter when ISO timestamp is provided", async () => {
+    jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
+    const mockSort = jest.fn().mockReturnThis();
+    const mockLimit = jest.fn().mockResolvedValue([]);
+    Message.find.mockReturnValue({ sort: mockSort, limit: mockLimit });
+
+    const app = createApp();
+    const res = await request(app)
+      .get("/messages/global?before=2026-01-01T00:00:00.000Z")
+      .set("Authorization", "Bearer valid-token");
+
+    expect(Message.find).toHaveBeenCalledWith({
+      isGlobal: true,
+      createdAt: { $lt: expect.any(Date) },
+    });
+    expect(res.status).toBe(200);
   });
 
   test("returns 500 when Message.find fails (global)", async () => {
@@ -229,7 +335,7 @@ describe("GET /messages/:user1/:user2", () => {
   });
 
   // ── Success ──────────────────────────────────────────────────────
-  test("returns a JSON array on success", async () => {
+  test("returns a paginated response shape on success", async () => {
     jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
     Message.find.mockReturnValue(mockChain([]));
 
@@ -237,7 +343,11 @@ describe("GET /messages/:user1/:user2", () => {
     const res = await request(app)
       .get("/messages/alice/bob")
       .set("Authorization", "Bearer token");
-    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body).toHaveProperty("messages");
+    expect(res.body).toHaveProperty("hasMore");
+    expect(res.body).toHaveProperty("cursor");
+    expect(Array.isArray(res.body.messages)).toBe(true);
+    expect(typeof res.body.hasMore).toBe("boolean");
   });
 
   test("returns messages in chronological ascending order", async () => {
@@ -267,11 +377,11 @@ describe("GET /messages/:user1/:user2", () => {
       .set("Authorization", "Bearer token");
 
     // Route fetches descending then reverses — final order should be ascending
-    expect(res.body[0].message).toBe("first");
-    expect(res.body[1].message).toBe("second");
+    expect(res.body.messages[0].message).toBe("first");
+    expect(res.body.messages[1].message).toBe("second");
   });
 
-  test("returns empty array when no messages exist", async () => {
+  test("returns empty messages array when no messages exist", async () => {
     jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
     Message.find.mockReturnValue(mockChain([]));
 
@@ -279,7 +389,107 @@ describe("GET /messages/:user1/:user2", () => {
     const res = await request(app)
       .get("/messages/alice/bob")
       .set("Authorization", "Bearer token");
-    expect(res.body).toEqual([]);
+    expect(res.body.messages).toEqual([]);
+    expect(res.body.hasMore).toBe(false);
+    expect(res.body.cursor).toBeNull();
+  });
+
+  // ── Private pagination via `before` ──────────────────────────────
+  test("private: returns 400 when `before` is invalid", async () => {
+    jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
+
+    const app = createApp();
+    const res = await request(app)
+      .get("/messages/alice/bob?before=bad-cursor")
+      .set("Authorization", "Bearer token");
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("invalid_pagination_cursor");
+  });
+
+  test("private: passes `before` as ObjectId filter", async () => {
+    jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
+    const mockSort = jest.fn().mockReturnThis();
+    const mockLimit = jest.fn().mockResolvedValue([]);
+    Message.find.mockReturnValue({ sort: mockSort, limit: mockLimit });
+
+    const app = createApp();
+    const res = await request(app)
+      .get("/messages/alice/bob?before=507f1f77bcf86cd799439011")
+      .set("Authorization", "Bearer token");
+
+    expect(Message.find).toHaveBeenCalledWith({
+      isGlobal: false,
+      $or: [
+        { sender: "alice", receiver: "bob" },
+        { sender: "bob", receiver: "alice" }
+      ],
+      _id: { $lt: expect.any(Object) },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  test("private: passes `before` as createdAt filter when ISO timestamp", async () => {
+    jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
+    const mockSort = jest.fn().mockReturnThis();
+    const mockLimit = jest.fn().mockResolvedValue([]);
+    Message.find.mockReturnValue({ sort: mockSort, limit: mockLimit });
+
+    const app = createApp();
+    const res = await request(app)
+      .get("/messages/alice/bob?before=2026-01-01T00:00:00.000Z")
+      .set("Authorization", "Bearer token");
+
+    expect(Message.find).toHaveBeenCalledWith({
+      isGlobal: false,
+      $or: [
+        { sender: "alice", receiver: "bob" },
+        { sender: "bob", receiver: "alice" }
+      ],
+      createdAt: { $lt: expect.any(Date) },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  test("private: returns hasMore=true when limit (50) is reached", async () => {
+    const manyMsgs = Array.from({ length: 50 }, (_, i) => ({
+      sender: "alice",
+      receiver: "bob",
+      message: `msg-${i}`,
+      createdAt: new Date(`2026-05-17T12:00:${String(i).padStart(2, '0')}Z`),
+      isGlobal: false,
+      _id: `id${String(i).padStart(24, '0')}`,
+    }));
+    jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
+    Message.find.mockReturnValue(mockChain(manyMsgs));
+
+    const app = createApp();
+    const res = await request(app)
+      .get("/messages/alice/bob")
+      .set("Authorization", "Bearer token");
+    expect(res.body.messages.length).toBe(50);
+    expect(res.body.hasMore).toBe(true);
+    expect(res.body.cursor).toBeTruthy();
+  });
+
+  test("private: returns hasMore=false when results are fewer than limit", async () => {
+    const fewMsgs = Array.from({ length: 30 }, (_, i) => ({
+      sender: "alice",
+      receiver: "bob",
+      message: `msg-${i}`,
+      createdAt: new Date(`2026-05-17T12:00:${String(i).padStart(2, '0')}Z`),
+      isGlobal: false,
+      _id: `id${String(i).padStart(24, '0')}`,
+    }));
+    jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
+    Message.find.mockReturnValue(mockChain(fewMsgs));
+
+    const app = createApp();
+    const res = await request(app)
+      .get("/messages/alice/bob")
+      .set("Authorization", "Bearer token");
+    expect(res.body.messages.length).toBe(30);
+    expect(res.body.hasMore).toBe(false);
+    expect(res.body.cursor).toBeNull();
   });
 
   test("returns 500 when Message.find fails (private)", async () => {

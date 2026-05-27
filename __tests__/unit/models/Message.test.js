@@ -60,6 +60,11 @@ describe("Message schema", () => {
       const msg = new Message(validMessage);
       expect(msg.clientId).toBeNull();
     });
+
+    test("senderDisplayName defaults to empty string", () => {
+      const msg = new Message(validMessage);
+      expect(msg.senderDisplayName).toBe("");
+    });
   });
 
   describe("indexes", () => {

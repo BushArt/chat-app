@@ -100,7 +100,8 @@ router.post('/register', authLimiter, async (req, res, next) => {
     const hashedPassword = await bcrypt.hash(password, bcryptRounds);
     
     const user = new User({ 
-      username: trimmedUsername, 
+      username: trimmedUsername,
+      displayName: trimmedUsername,
       password: hashedPassword 
     });
     

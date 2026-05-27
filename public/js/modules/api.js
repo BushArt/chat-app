@@ -23,8 +23,9 @@ export async function login(username, password) {
   return data;
 }
 
-export async function fetchGlobalHistory() {
-  const res = await fetch("/messages/global", {
+export async function fetchGlobalHistory(before) {
+  const params = before ? `?before=${encodeURIComponent(before)}` : '';
+  const res = await fetch(`/messages/global${params}`, {
     headers: { Authorization: "Bearer " + state.getCurrentToken() }
   });
   if (!res.ok) throw new Error('Network response was not ok');
@@ -33,8 +34,9 @@ export async function fetchGlobalHistory() {
   return await res.json();
 }
 
-export async function fetchPrivateHistory(user1, user2) {
-  const res = await fetch(`/messages/${encodeURIComponent(user1)}/${encodeURIComponent(user2)}`, {
+export async function fetchPrivateHistory(user1, user2, before) {
+  const params = before ? `?before=${encodeURIComponent(before)}` : '';
+  const res = await fetch(`/messages/${encodeURIComponent(user1)}/${encodeURIComponent(user2)}${params}`, {
     headers: { Authorization: "Bearer " + state.getCurrentToken() }
   });
   if (!res.ok) throw new Error('Network response was not ok');

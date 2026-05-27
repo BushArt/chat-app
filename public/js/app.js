@@ -64,19 +64,49 @@ function logout() {
   ui.showAuthScreen();
 }
 
+// ---- Pagination state ----
+let globalCursor = null;
+let privateCursor = null;
+
 // ---- History loading ----
 async function loadGlobalHistory() {
   dom.globalMessages.innerHTML = "";
   delete dom.globalMessages.dataset.lastDate;
+  globalCursor = null;
   try {
-    const history = await api.fetchGlobalHistory();
-    if (!Array.isArray(history) || history.length === 0) {
+    const data = await api.fetchGlobalHistory();
+    if (!data || !Array.isArray(data.messages) || data.messages.length === 0) {
       ui.appendSystem("global-messages", "Welcome to Global Chat! Say hello.");
+      ui.setHasMore('global-messages', false);
       return;
     }
-    ui.appendHistoryBatch("global-messages", history);
+    ui.appendHistoryBatch("global-messages", data.messages);
+    globalCursor = data.cursor;
+    ui.setHasMore('global-messages', data.hasMore);
   } catch {
     ui.appendSystem("global-messages", "Could not load history.");
+    ui.setHasMore('global-messages', false);
+  }
+}
+
+async function loadMoreGlobal() {
+  if (!globalCursor || dom.globalMessages.dataset.loading === 'true') return;
+  ui.setLoading('global-messages', true);
+  try {
+    const data = await api.fetchGlobalHistory(globalCursor);
+    if (!data || !Array.isArray(data.messages) || data.messages.length === 0) {
+      globalCursor = null;
+      ui.setHasMore('global-messages', false);
+      return;
+    }
+    ui.appendHistoryBatch("global-messages", data.messages, 'prepend');
+    globalCursor = data.cursor;
+    ui.setHasMore('global-messages', data.hasMore);
+    ui.updateLoadMoreButton('global-messages', data.hasMore, loadMoreGlobal);
+  } catch {
+    // Silently fail — user can retry by scrolling up again
+  } finally {
+    ui.setLoading('global-messages', false);
   }
 }
 
@@ -105,6 +135,7 @@ async function startChat() {
   
   dom.privateMessages.innerHTML = "";
   delete dom.privateMessages.dataset.lastDate;
+  privateCursor = null;
   state.clearTypingState("private");
   ui.renderTyping("private");
   
@@ -112,11 +143,14 @@ async function startChat() {
   ui.appendSystem("private-messages", "Now chatting with " + recipient);
 
   try {
-    const history = await api.fetchPrivateHistory(state.getCurrentUser(), recipient);
-    if (!Array.isArray(history) || history.length === 0) {
+    const data = await api.fetchPrivateHistory(state.getCurrentUser(), recipient);
+    if (!data || !Array.isArray(data.messages) || data.messages.length === 0) {
       ui.appendSystem("private-messages", "No messages yet. Say hello!");
+      ui.setHasMore('private-messages', false);
     } else {
-      ui.appendHistoryBatch("private-messages", history);
+      ui.appendHistoryBatch("private-messages", data.messages);
+      privateCursor = data.cursor;
+      ui.setHasMore('private-messages', data.hasMore);
     }
 
     // Append any buffered messages
@@ -128,6 +162,27 @@ async function startChat() {
     state.deleteBufferEntry(roomId);
   } catch {
     ui.appendSystem("private-messages", "Could not load history.");
+  }
+}
+
+async function loadMorePrivate() {
+  if (!privateCursor || dom.privateMessages.dataset.loading === 'true') return;
+  ui.setLoading('private-messages', true);
+  try {
+    const data = await api.fetchPrivateHistory(state.getCurrentUser(), state.getCurrentRecipient(), privateCursor);
+    if (!data || !Array.isArray(data.messages) || data.messages.length === 0) {
+      privateCursor = null;
+      ui.setHasMore('private-messages', false);
+      return;
+    }
+    ui.appendHistoryBatch("private-messages", data.messages, 'prepend');
+    privateCursor = data.cursor;
+    ui.setHasMore('private-messages', data.hasMore);
+    ui.updateLoadMoreButton('private-messages', data.hasMore, loadMorePrivate);
+  } catch {
+    // Silently fail — user can retry by scrolling up again
+  } finally {
+    ui.setLoading('private-messages', false);
   }
 }
 
@@ -288,6 +343,8 @@ function init() {
   
   ui.setupMessageContainer(dom.globalMessages);
   ui.setupMessageContainer(dom.privateMessages);
+  ui.setupScrollPagination('global-messages', loadMoreGlobal);
+  ui.setupScrollPagination('private-messages', loadMorePrivate);
   
   restoreSession();
 }

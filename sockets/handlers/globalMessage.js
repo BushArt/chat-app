@@ -3,6 +3,7 @@
  */
 
 const Message = require('../../models/Message');
+const User = require('../../models/User');
 const logger = require('../../utils/logger');
 const emitError = require('../../utils/socketError');
 const HttpError = require('../../utils/HttpError');
@@ -30,11 +31,23 @@ module.exports = function createGlobalMessageHandler(io, socket, state, messageA
     socket.to('global').emit('user_stopped_typing', { username: sender, room: 'global' });
 
     try {
+      // Look up the sender's display name for denormalization
+      let senderDisplayName = '';
+      try {
+        const senderUser = await User.findOne({ username: sender }).select('displayName').lean();
+        if (senderUser && senderUser.displayName) {
+          senderDisplayName = senderUser.displayName;
+        }
+      } catch {
+        // Silently fall back to empty string if lookup fails
+      }
+
       const newMessage = new Message({
         sender,
         message: sanitizedMessage.trim(),
         isGlobal: true,
-        clientId: data.clientId
+        clientId: data.clientId,
+        senderDisplayName
       });
       await newMessage.save();
 
@@ -42,7 +55,8 @@ module.exports = function createGlobalMessageHandler(io, socket, state, messageA
         sender,
         message: sanitizedMessage.trim(),
         createdAt: newMessage.createdAt,
-        clientId: newMessage.clientId
+        clientId: newMessage.clientId,
+        senderDisplayName
       };
 
       // Ack the sender if still connected

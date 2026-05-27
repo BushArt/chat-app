@@ -56,4 +56,98 @@ describe("User schema", () => {
       expect(user.schema.path("username").options.unique).toBe(true);
     });
   });
+
+  describe("profile fields", () => {
+    test("displayName defaults to empty string", () => {
+      const user = new User({ username: "alice", password: "pass" });
+      expect(user.displayName).toBe("");
+    });
+
+    test("displayName accepts a valid value", async () => {
+      const user = new User({ username: "alice", password: "pass", displayName: "Alice Chen" });
+      let err;
+      try {
+        await user.validate();
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeUndefined();
+    });
+
+    test("displayName exceeding 50 codepoints fails validation", async () => {
+      const user = new User({ username: "alice", password: "pass", displayName: "x".repeat(51) });
+      let err;
+      try {
+        await user.validate();
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeDefined();
+      expect(err.errors.displayName).toBeDefined();
+    });
+
+    test("bio defaults to empty string", () => {
+      const user = new User({ username: "alice", password: "pass" });
+      expect(user.bio).toBe("");
+    });
+
+    test("bio exceeding 160 codepoints fails validation", async () => {
+      const user = new User({ username: "alice", password: "pass", bio: "x".repeat(161) });
+      let err;
+      try {
+        await user.validate();
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeDefined();
+      expect(err.errors.bio).toBeDefined();
+    });
+
+    test("status defaults to 'online'", () => {
+      const user = new User({ username: "alice", password: "pass" });
+      expect(user.status).toBe("online");
+    });
+
+    test("status accepts valid enum values", async () => {
+      for (const status of ["online", "away", "busy", "offline"]) {
+        const user = new User({ username: "alice", password: "pass", status });
+        let err;
+        try {
+          await user.validate();
+        } catch (e) {
+          err = e;
+        }
+        expect(err).toBeUndefined();
+      }
+    });
+
+    test("status set to an invalid value fails validation", async () => {
+      const user = new User({ username: "alice", password: "pass", status: "invalid" });
+      let err;
+      try {
+        await user.validate();
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeDefined();
+      expect(err.errors.status).toBeDefined();
+    });
+
+    test("all profile fields validate together successfully", async () => {
+      const user = new User({
+        username: "alice",
+        password: "pass",
+        displayName: "Alice Chen",
+        bio: "Just here to chat.",
+        status: "away"
+      });
+      let err;
+      try {
+        await user.validate();
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeUndefined();
+    });
+  });
 });

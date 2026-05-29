@@ -1,5 +1,10 @@
 const createPresenceHandlers = require("../../../../sockets/handlers/presence");
 
+// Mock User model for updateOne calls in handleDisconnect
+jest.mock("../../../../models/User", () => ({
+  updateOne: jest.fn().mockResolvedValue()
+}));
+
 describe("presence handlers", () => {
   let io, socket, state, messageAllowed;
 
@@ -10,7 +15,7 @@ describe("presence handlers", () => {
       onlineUsers: new Map(),
       typingTimeouts: new Map(),
       typingTimeoutsByUser: new Map(),
-      getOnlineList: jest.fn().mockReturnValue([]),
+      getOnlineList: jest.fn().mockReturnValue(Promise.resolve([])),
     };
     messageAllowed = { cleanup: jest.fn() };
   });
@@ -60,17 +65,17 @@ describe("presence handlers", () => {
   });
 
   describe("handleDisconnect", () => {
-    test("calls messageAllowed.cleanup()", () => {
+    test("calls messageAllowed.cleanup()", async () => {
       const { handleDisconnect } = createPresenceHandlers(io, socket, state, messageAllowed);
-      handleDisconnect();
+      await handleDisconnect();
       expect(messageAllowed.cleanup).toHaveBeenCalledTimes(1);
     });
 
-    test("removes socket from user's Set and does not broadcast when other sockets remain", () => {
+    test("removes socket from user's Set and does not broadcast when other sockets remain", async () => {
       const sockets = new Set(['socket-2', 'socket-3']);
       state.onlineUsers.set("alice", sockets);
       const { handleDisconnect } = createPresenceHandlers(io, socket, state, messageAllowed);
-      handleDisconnect();
+      await handleDisconnect();
 
       expect(state.onlineUsers.get("alice")).toBe(sockets);
       expect(sockets.has('socket-1')).toBe(false);
@@ -78,18 +83,18 @@ describe("presence handlers", () => {
       expect(io.emit).not.toHaveBeenCalled();
     });
 
-    test("removes user and broadcasts online_users when last socket disconnects", () => {
+    test("removes user and broadcasts online_users when last socket disconnects", async () => {
       const sockets = new Set(['socket-1']);
       state.onlineUsers.set("alice", sockets);
-      state.getOnlineList = jest.fn().mockReturnValue([]);
+      state.getOnlineList = jest.fn().mockReturnValue(Promise.resolve([]));
       const { handleDisconnect } = createPresenceHandlers(io, socket, state, messageAllowed);
-      handleDisconnect();
+      await handleDisconnect();
 
       expect(state.onlineUsers.has("alice")).toBe(false);
       expect(io.emit).toHaveBeenCalledWith("online_users", []);
     });
 
-    test("clears typingTimeouts entries where key starts with 'username:'", () => {
+    test("clears typingTimeouts entries where key starts with 'username:'", async () => {
       state.onlineUsers.set("alice", new Set(["socket-1"]));
       state.typingTimeouts.set("alice:global", 111);
       state.typingTimeouts.set("alice:bob:room", 222);
@@ -97,7 +102,7 @@ describe("presence handlers", () => {
       state.typingTimeoutsByUser.set("alice", new Set(["alice:global", "alice:bob:room"]));
 
       const { handleDisconnect } = createPresenceHandlers(io, socket, state, messageAllowed);
-      handleDisconnect();
+      await handleDisconnect();
 
       expect(state.typingTimeouts.has("alice:global")).toBe(false);
       expect(state.typingTimeouts.has("alice:bob:room")).toBe(false);
@@ -105,10 +110,10 @@ describe("presence handlers", () => {
       expect(state.typingTimeoutsByUser.has("alice")).toBe(false);
     });
 
-    test("does not throw when socket.username is falsy", () => {
+    test("does not throw when socket.username is falsy", async () => {
       socket.username = null;
       const { handleDisconnect } = createPresenceHandlers(io, socket, state, messageAllowed);
-      expect(() => handleDisconnect()).not.toThrow();
+      await expect(() => handleDisconnect()).not.toThrow();
     });
   });
 });

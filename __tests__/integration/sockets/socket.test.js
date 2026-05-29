@@ -7,6 +7,7 @@ const state = require("../../../sockets/state");
 // Mock the User model for JWT revocation checks
 jest.mock("../../../models/User", () => ({
   findById: jest.fn(),
+  updateOne: jest.fn().mockResolvedValue(),
 }));
 
 jest.mock("jsonwebtoken");

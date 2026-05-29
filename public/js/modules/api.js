@@ -44,3 +44,28 @@ export async function fetchPrivateHistory(user1, user2, before) {
   if (ct !== null && !String(ct).includes('application/json')) throw new Error('Invalid JSON response');
   return await res.json();
 }
+
+export async function fetchProfile() {
+  const res = await fetch("/auth/me", {
+    headers: { Authorization: "Bearer " + state.getCurrentToken() }
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data && data.error) || "Failed to fetch profile.");
+  }
+  return await res.json();
+}
+
+export async function updateProfile(fields) {
+  const res = await fetch("/auth/profile", {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer " + state.getCurrentToken()
+    },
+    body: JSON.stringify(fields)
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Profile update failed.");
+  return data;
+}

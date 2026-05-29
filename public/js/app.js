@@ -19,7 +19,16 @@ async function register() {
   }
   try {
     const data = await api.register(username, password);
-    ui.showAuthError(data.message || "Account created.", true);
+    state.setCurrentToken(data.token);
+    state.setCurrentUser(data.username);
+    state.setProfileFromResponse(data);
+    utils.safeLocalStorageSet("chat_token", data.token);
+    utils.safeLocalStorageSet("chat_user", data.username);
+    dom.loggedInAs.textContent = "Logged in as: " + (data.displayName || data.username);
+    ui.showChatScreen();
+    ui.setConnectionBanner("Connecting to chat server...");
+    socket.connect(data.token);
+    loadGlobalHistory();
   } catch (err) {
     ui.showAuthError(err.message || "Could not connect to server.");
   }
@@ -37,9 +46,10 @@ async function login() {
 
     state.setCurrentToken(data.token);
     state.setCurrentUser(data.username);
+    state.setProfileFromResponse(data);
     utils.safeLocalStorageSet("chat_token", data.token);
     utils.safeLocalStorageSet("chat_user", data.username);
-    dom.loggedInAs.textContent = "Logged in as: " + data.username;
+    dom.loggedInAs.textContent = "Logged in as: " + (data.displayName || data.username);
     
     ui.showChatScreen();
     ui.setConnectionBanner("Connecting to chat server...");
@@ -284,7 +294,7 @@ function setupTextarea(textarea, counter, sendButton, sendFn, roomGetter) {
   });
 }
 
-function restoreSession() {
+async function restoreSession() {
   const savedToken = utils.safeLocalStorageGet("chat_token");
   const savedUser = utils.safeLocalStorageGet("chat_user");
   if (!savedToken || !savedUser) return;
@@ -295,6 +305,14 @@ function restoreSession() {
   ui.setConnectionBanner("Connecting to chat server...");
   connect(savedToken);
   loadGlobalHistory();
+  // Fetch profile data (not cached in localStorage)
+  try {
+    const profile = await api.fetchProfile();
+    state.setProfileFromResponse(profile);
+    dom.loggedInAs.textContent = "Logged in as: " + (profile.displayName || profile.username);
+  } catch {
+    // Non-critical: display name will fall back to username
+  }
 }
 
 function setupKeyboardShortcuts() {

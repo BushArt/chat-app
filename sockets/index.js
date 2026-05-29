@@ -54,14 +54,21 @@ module.exports = function setupSockets(io) {
   // ── CONNECTION HANDLER ──
   io.on('connection', (socket) => {
     const username = socket.username;
-    if (!state.onlineUsers.has(username)) state.onlineUsers.set(username, new Set());
+    if (!state.onlineUsers.has(username)) {
+      state.onlineUsers.set(username, new Set());
+      // Set status to online in DB when user comes online
+      User.updateOne({ username }, { status: 'online' }).catch(err => {
+        logger.warn({ event: 'status_update_failed', username, status: 'online', err: String(err) });
+      });
+    }
     state.onlineUsers.get(username).add(socket.id);
     socket.join('global');
     // Emit online user list after a short delay so clients have time to
     // register their `online_users` listener and avoid a race in tests
     // and real clients attaching handlers during connect.
-    const timer = setTimeout(() => {
-      io.emit('online_users', state.getOnlineList());
+    const timer = setTimeout(async () => {
+      const onlineList = await state.getOnlineList();
+      io.emit('online_users', onlineList);
     }, 100);
     timer.unref();
     logger.info({ event: 'socket_connect', username, socketId: socket.id, connections: state.onlineUsers.get(username).size, uniqueOnline: state.onlineUsers.size });

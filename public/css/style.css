@@ -279,6 +279,19 @@ textarea:focus-visible { outline: 0; box-shadow: var(--focus); }
   flex-shrink: 0;
 }
 
+.online-dot.away {
+  background: #f59e0b;
+}
+
+.online-dot.busy {
+  background: var(--danger);
+}
+
+.online-dot.offline {
+  background: var(--text-soft);
+  opacity: 0.5;
+}
+
 #chat-area {
   flex: 1;
   display: flex;

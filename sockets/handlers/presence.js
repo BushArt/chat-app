@@ -3,6 +3,7 @@
  * Join room logic and disconnect cleanup
  */
 
+const User = require('../../models/User');
 const logger = require('../../utils/logger');
 
 module.exports = function createPresenceHandlers(io, socket, state, messageAllowed, joinLimiter) {
@@ -28,7 +29,7 @@ module.exports = function createPresenceHandlers(io, socket, state, messageAllow
     }
   }
 
-  function handleDisconnect() {
+  async function handleDisconnect() {
     messageAllowed.cleanup();
     
     if (socket.username) {
@@ -37,7 +38,12 @@ module.exports = function createPresenceHandlers(io, socket, state, messageAllow
         sockets.delete(socket.id);
         if (sockets.size === 0) {
           state.onlineUsers.delete(socket.username);
-          io.emit('online_users', state.getOnlineList());
+          // Set status to offline in DB
+          User.updateOne({ username: socket.username }, { status: 'offline' }).catch(err => {
+            logger.warn({ event: 'status_update_failed', username: socket.username, status: 'offline', err: String(err) });
+          });
+          const onlineList = await state.getOnlineList();
+          io.emit('online_users', onlineList);
           logger.info({ event: 'user_offline', username: socket.username });
 
           // Clean up typing timeouts for this user via indexed lookup (O(1) instead of O(MAX_TYPING))

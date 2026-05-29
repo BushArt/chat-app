@@ -119,7 +119,23 @@ socket.on("error_message", ({ error }) => {
   state.setSendingPrivate(false);
 });
 
-socket.on("online_users", ui.renderOnlineUsers);
+socket.on("online_users", (users) => {
+  state.setOnlineUsersFromList(users);
+  ui.renderOnlineUsers(users);
+});
+
+socket.on("profile_updated", (data) => {
+  if (!data || !data.username) return;
+  state.updateOnlineUser(data.username, data.displayName, data.status);
+  // Re-render the online user list to reflect the change
+  const currentList = Array.from(state.getOnlineUsersMap().values());
+  ui.renderOnlineUsers(currentList);
+  // Update own profile if it's the current user
+  if (data.username === state.getCurrentUser()) {
+    state.setCurrentDisplayName(data.displayName);
+    state.setCurrentStatus(data.status);
+  }
+});
 
 socket.on("connect", () => {
   ui.setConnectionBanner("");

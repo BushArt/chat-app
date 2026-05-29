@@ -310,28 +310,52 @@ export function enableTabKeyboard() {
   });
 }
 
+const STATUS_CLASS = {
+  online: "online-dot online",
+  away: "online-dot away",
+  busy: "online-dot busy",
+  offline: "online-dot offline"
+};
+
+function resolveUserEntry(entry) {
+  if (typeof entry === 'string') {
+    return { username: entry, displayName: entry, status: 'online' };
+  }
+  if (entry && typeof entry === 'object') {
+    return {
+      username: entry.username || '',
+      displayName: entry.displayName || entry.username || '',
+      status: entry.status || 'online'
+    };
+  }
+  return null;
+}
+
 export function renderOnlineUsers(users) {
   dom.onlineList.innerHTML = "";
   if (!Array.isArray(users)) return;
   const fragment = document.createDocumentFragment();
-  users.forEach((username) => {
+  users.forEach((entry) => {
+    const user = resolveUserEntry(entry);
+    if (!user || !user.username) return;
     const btn = document.createElement("button");
     btn.type = "button";
     btn.classList.add("online-user");
     btn.setAttribute("role", "option");
-    btn.setAttribute("aria-label", "Start private chat with " + username);
+    btn.setAttribute("aria-label", "Start private chat with " + user.displayName);
 
     const dot = document.createElement("span");
-    dot.classList.add("online-dot");
+    dot.className = STATUS_CLASS[user.status] || "online-dot";
 
     const name = document.createElement("span");
-    name.textContent = username;
+    name.textContent = user.displayName;
+    name.title = user.username; // Show raw username as tooltip
 
     btn.appendChild(dot);
     btn.appendChild(name);
     btn.onclick = () => {
-      if (username === state.getCurrentUser()) return;
-      dom.recipientInput.value = username;
+      if (user.username === state.getCurrentUser()) return;
+      dom.recipientInput.value = user.username;
       switchTab("private");
       
       // Auto start chat when clicking online user

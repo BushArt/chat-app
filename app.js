@@ -23,6 +23,8 @@ const io = new Server(server, {
 });
 
 require('./sockets')(io);
+// Expose io for route-level socket broadcasts (e.g., profile_updated)
+app.set('io', io);
 
 app.use(cors({ origin: allowedOrigin }));
 app.use(express.json({ limit: '100kb' }));

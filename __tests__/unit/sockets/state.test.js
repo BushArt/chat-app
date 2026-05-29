@@ -1,11 +1,23 @@
+// Mock User model before requiring state.js, since getOnlineList() now queries the DB
+jest.mock("../../../models/User", () => ({
+  find: jest.fn().mockReturnValue({
+    select: () => ({
+      lean: () => Promise.resolve([])
+    })
+  })
+}));
+
 const state = require("../../../sockets/state");
 
 // Grab live references so we can reset between tests
 const { onlineUsers, typingTimeouts } = state;
 
+const User = require("../../../models/User");
+
 beforeEach(() => {
   onlineUsers.clear();
   typingTimeouts.clear();
+  jest.clearAllMocks();
 });
 
 // ---------------------------------------------------------------------------
@@ -66,43 +78,81 @@ describe("onlineUsers Map", () => {
 // getOnlineList
 // ---------------------------------------------------------------------------
 describe("getOnlineList", () => {
-  test("returns empty array when onlineUsers is empty", () => {
-    expect(state.getOnlineList()).toEqual([]);
+  test("returns empty array when onlineUsers is empty", async () => {
+    const list = await state.getOnlineList();
+    expect(list).toEqual([]);
   });
 
-  test("returns array with username when one user is online", () => {
+  test("returns array of profile objects when one user is online", async () => {
+    User.find.mockReturnValue({
+      select: () => ({
+        lean: () => Promise.resolve([
+          { username: "alice", displayName: "Alice", status: "online" }
+        ])
+      })
+    });
     onlineUsers.set("alice", 1);
-    expect(state.getOnlineList()).toEqual(["alice"]);
+    const list = await state.getOnlineList();
+    expect(list).toHaveLength(1);
+    expect(list[0]).toHaveProperty("username", "alice");
+    expect(list[0]).toHaveProperty("displayName", "Alice");
+    expect(list[0]).toHaveProperty("status", "online");
   });
 
-  test("returns array of all usernames when multiple users are online", () => {
+  test("returns profile objects for multiple users", async () => {
+    User.find.mockReturnValue({
+      select: () => ({
+        lean: () => Promise.resolve([
+          { username: "alice", displayName: "Alice", status: "online" },
+          { username: "bob", displayName: "Bob", status: "away" }
+        ])
+      })
+    });
     onlineUsers.set("alice", 1);
     onlineUsers.set("bob", 2);
-    onlineUsers.set("carol", 1);
-    const list = state.getOnlineList();
-    expect(list).toContain("alice");
-    expect(list).toContain("bob");
-    expect(list).toContain("carol");
-    expect(list.length).toBe(3);
+    const list = await state.getOnlineList();
+    expect(list).toHaveLength(2);
+    expect(list.find(u => u.username === "bob").status).toBe("away");
   });
 
-  test("returns an Array (not a Map or Iterator)", () => {
+  test("falls back to username string array when DB query fails", async () => {
+    User.find.mockImplementation(() => {
+      throw new Error("DB error");
+    });
     onlineUsers.set("alice", 1);
-    expect(Array.isArray(state.getOnlineList())).toBe(true);
+    onlineUsers.set("bob", 2);
+    const list = await state.getOnlineList();
+    // Fallback returns username strings
+    expect(list).toEqual(["alice", "bob"]);
   });
 
-  test("does not mutate the onlineUsers Map", () => {
+  test("returns an Array (not a Map or Iterator)", async () => {
+    onlineUsers.set("alice", 1);
+    const list = await state.getOnlineList();
+    expect(Array.isArray(list)).toBe(true);
+  });
+
+  test("does not mutate the onlineUsers Map", async () => {
     onlineUsers.set("alice", 1);
     const beforeSize = onlineUsers.size;
-    state.getOnlineList();
+    await state.getOnlineList();
     expect(onlineUsers.size).toBe(beforeSize);
     expect(onlineUsers.get("alice")).toBe(1);
   });
 
-  test("returned array length equals onlineUsers.size", () => {
+  test("returned array length equals onlineUsers.size when DB succeeds", async () => {
+    User.find.mockReturnValue({
+      select: () => ({
+        lean: () => Promise.resolve([
+          { username: "alice", displayName: "Alice", status: "online" },
+          { username: "bob", displayName: "Bob", status: "online" }
+        ])
+      })
+    });
     onlineUsers.set("alice", 1);
     onlineUsers.set("bob", 2);
-    expect(state.getOnlineList().length).toBe(onlineUsers.size);
+    const list = await state.getOnlineList();
+    expect(list.length).toBe(onlineUsers.size);
   });
 });
 

@@ -33,6 +33,21 @@ const authLimiter = isTestEnvironment
   }
 });
 
+// Profile update rate limiter: 20 updates per hour per IP
+const profileLimiter = isTestEnvironment
+  ? (req, res, next) => next()
+  : rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  message: { error: 'Too many profile updates, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res, next, options) => {
+    logger.warn({ event: 'rate_limit_profile', ip: req.ip });
+    next(new HttpError(options.message.error, options.statusCode, 'rate_limited'));
+  }
+});
+
 // ─────────────────────────────────────────
 // USERNAME VALIDATION
 // Allows: Latin letters, digits, underscores,
@@ -56,6 +71,55 @@ function isValidUsername(username) {
   // NOTE: range starts at U+3001 (not U+3000) to exclude ideographic space.
   const allowed = /^[\w\-\u3001-\u9FFF\uA000-\uA4FF\uAC00-\uD7FF\uF900-\uFAFF\u2E80-\u2EFF\u31F0-\u31FF\u3040-\u30FF]+$/u;
   return allowed.test(username);
+}
+
+// ─────────────────────────────────────────
+// DISPLAY NAME VALIDATION
+// Same as username but also allows spaces,
+// periods, apostrophes, and common punctuation.
+// Max 50 codepoints.
+// ─────────────────────────────────────────
+function isValidDisplayName(v) {
+  if (typeof v !== 'string') return false;
+  const trimmed = v.trim();
+  const cp = [...trimmed].length;
+  if (cp < 1 || cp > 50) return false;
+  // Allow username characters plus spaces, periods, apostrophes, commas, exclamation, question marks
+  const allowed = /^[\w\-\u3001-\u9FFF\uA000-\uA4FF\uAC00-\uD7FF\uF900-\uFAFF\u2E80-\u2EFF\u31F0-\u31FF\u3040-\u30FF .,'!?]+$/u;
+  return allowed.test(trimmed);
+}
+
+// ─────────────────────────────────────────
+// BIO VALIDATION
+// Max 160 codepoints, no HTML tags.
+// ─────────────────────────────────────────
+function isValidBio(v) {
+  if (typeof v !== 'string') return false;
+  const trimmed = v.trim();
+  const cp = [...trimmed].length;
+  if (cp > 160) return false;
+  // Reject HTML tags
+  return !/<[^>]*>/u.test(trimmed);
+}
+
+// ─────────────────────────────────────────
+// Count Unicode code points
+// ─────────────────────────────────────────
+function countCodePoints(str) {
+  return [...str].length;
+}
+
+// ─────────────────────────────────────────
+// Build profile response object (no password)
+// ─────────────────────────────────────────
+function buildProfile(user) {
+  return {
+    username: user.username,
+    displayName: user.displayName || user.username,
+    bio: user.bio || '',
+    status: user.status || 'online',
+    createdAt: user.createdAt
+  };
 }
 
 // ─────────────────────────────────────────
@@ -107,7 +171,22 @@ router.post('/register', authLimiter, async (req, res, next) => {
     
     await user.save();
 
-    res.status(201).json({ message: 'Account created! You can now log in.' });
+    // Generate JWT so client can start using the app immediately
+    if (!process.env.JWT_SECRET) {
+      logger.error({ event: 'jwt_missing' });
+      return next(new HttpError('Server configuration error', 500, 'jwt_secret_missing'));
+    }
+
+    const token = jwt.sign(
+      { id: user._id, username: user.username },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    res.status(201).json({
+      token,
+      ...buildProfile(user)
+    });
 
   } catch (err) {
     if (err.code === 11000) {
@@ -163,7 +242,10 @@ router.post('/login', authLimiter, async (req, res, next) => {
       { expiresIn: '24h' }
     );
 
-    res.json({ token, username: user.username });
+    res.json({
+      token,
+      ...buildProfile(user)
+    });
 
   } catch (err) {
     logger.error({ event: 'login_error', err: String(err) });
@@ -185,6 +267,116 @@ router.post('/logout', verifyToken, async (req, res, next) => {
   } catch (err) {
     logger.error({ event: 'logout_error', err: String(err) });
     next(new HttpError('Server error during logout', 500, 'logout_failed'));
+  }
+});
+
+// ─────────────────────────────────────────
+// GET /auth/me
+// Returns the current user's profile.
+// ─────────────────────────────────────────
+router.get('/me', verifyToken, async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user.id).select('-password').lean();
+
+    if (!user) {
+      return next(new HttpError('User not found', 404, 'user_not_found'));
+    }
+
+    res.json(buildProfile(user));
+  } catch (err) {
+    logger.error({ event: 'get_me_error', err: String(err) });
+    next(new HttpError('Server error', 500, 'server_error'));
+  }
+});
+
+// ─────────────────────────────────────────
+// PUT /auth/profile
+// Updates the current user's profile.
+// Accepts any subset of { displayName, bio, status }.
+// ─────────────────────────────────────────
+router.put('/profile', verifyToken, profileLimiter, async (req, res, next) => {
+  try {
+    const { displayName, bio, status } = req.body;
+
+    const updateFields = {};
+    const changedFields = [];
+
+    // Validate displayName if provided
+    if (displayName !== undefined) {
+      const trimmed = String(displayName).trim();
+      if (!isValidDisplayName(displayName)) {
+        return next(new HttpError(
+          'Display name must be 1–50 characters and may only contain letters, numbers, spaces, and common punctuation.',
+          400,
+          'invalid_display_name'
+        ));
+      }
+      updateFields.displayName = trimmed;
+      changedFields.push('displayName');
+    }
+
+    // Validate bio if provided
+    if (bio !== undefined) {
+      if (!isValidBio(bio)) {
+        return next(new HttpError(
+          'Bio must be at most 160 characters and may not contain HTML.',
+          400,
+          'invalid_bio'
+        ));
+      }
+      updateFields.bio = String(bio).trim();
+      changedFields.push('bio');
+    }
+
+    // Validate status if provided
+    if (status !== undefined) {
+      const allowed = ['online', 'away', 'busy'];
+      if (!allowed.includes(status)) {
+        return next(new HttpError(
+          'Status must be one of: online, away, busy.',
+          400,
+          'invalid_status'
+        ));
+      }
+      updateFields.status = status;
+      changedFields.push('status');
+    }
+
+    if (Object.keys(updateFields).length === 0) {
+      return next(new HttpError('No valid fields to update.', 400, 'no_fields'));
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { $set: updateFields },
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    if (!user) {
+      return next(new HttpError('User not found', 404, 'user_not_found'));
+    }
+
+    logger.info({ event: 'profile_update', username: user.username, changed_fields: changedFields });
+
+    // Broadcast profile_updated via socket.io
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        io.emit('profile_updated', {
+          username: user.username,
+          displayName: user.displayName || user.username,
+          status: user.status || 'online'
+        });
+      }
+    } catch (socketErr) {
+      // Non-critical: don't fail the request if broadcast fails
+      logger.warn({ event: 'profile_update_broadcast_failed', username: user.username, err: String(socketErr) });
+    }
+
+    res.json(buildProfile(user));
+  } catch (err) {
+    logger.error({ event: 'profile_update_error', err: String(err) });
+    next(new HttpError('Server error during profile update', 500, 'profile_update_failed'));
   }
 });
 

@@ -5,12 +5,31 @@ const securityHeaders = require("../../../middleware/security");
 const errorHandler = require("../../../middleware/errorHandler");
 
 // ── Mocks ──────────────────────────────────────────────────────────────
-// Mock express-rate-limit to no-op — rate limiter behavior is tested in Phase 2 unit tests
 jest.mock("express-rate-limit", () => () => (req, res, next) => next());
-
-jest.mock("../../../models/User");
 jest.mock("bcryptjs");
 jest.mock("jsonwebtoken");
+
+// Self-contained User mock: constructor stores properties, static methods are jest.fn()
+jest.mock("../../../models/User", () => {
+  // Use a factory function so that prototype.save is available
+  function MockUser(data) {
+    if (data) {
+      Object.assign(this, data);
+    }
+    this.createdAt = this.createdAt || new Date();
+    this.updatedAt = this.updatedAt || new Date();
+  }
+  MockUser.prototype.save = jest.fn().mockResolvedValue();
+  MockUser.findOne = jest.fn();
+  MockUser.findById = jest.fn().mockReturnValue({
+    select: () => ({ lean: () => Promise.resolve(null) })
+  });
+  MockUser.findByIdAndUpdate = jest.fn().mockReturnValue({
+    select: () => Promise.resolve(null)
+  });
+  MockUser.updateOne = jest.fn();
+  return MockUser;
+});
 
 const User = require("../../../models/User");
 const bcrypt = require("bcryptjs");
@@ -19,7 +38,6 @@ const jwt = require("jsonwebtoken");
 const authRoutes = require("../../../routes/auth");
 
 // ── Test app factory ───────────────────────────────────────────────────
-// Creates a fresh Express instance per call with middleware matching server.js order
 function createApp() {
   const app = express();
   app.use(cors({ origin: "*" }));
@@ -31,6 +49,14 @@ function createApp() {
   return app;
 }
 
+const mockIo = { emit: jest.fn() };
+
+function createAppWithIo() {
+  const app = createApp();
+  app.set('io', mockIo);
+  return app;
+}
+
 beforeAll(() => {
   process.env.JWT_SECRET = "test-secret";
   process.env.BCRYPT_ROUNDS = "4";
@@ -38,7 +64,20 @@ beforeAll(() => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // Reset findById to return chainable select/lean
+  User.findById.mockReturnValue({
+    select: () => ({ lean: () => Promise.resolve(null) })
+  });
 });
+
+// Helper: mock User.findById() to return a specific user via chainable select().lean()
+function mockFindByIdReturns(userObj) {
+  User.findById.mockReturnValue({
+    select: () => ({
+      lean: () => Promise.resolve(userObj)
+    })
+  });
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // GET /ping
@@ -61,14 +100,15 @@ describe("GET /ping", () => {
 // POST /auth/register
 // ─────────────────────────────────────────────────────────────────────
 describe("POST /auth/register", () => {
-  // Default mock: user does not exist, save succeeds
   beforeEach(() => {
     User.findOne.mockResolvedValue(null);
-    User.prototype.save.mockResolvedValue();
+    User.prototype.save.mockImplementation(function() {
+      return Promise.resolve();
+    });
     bcrypt.hash.mockResolvedValue("hashed-password");
+    jwt.sign.mockReturnValue("mock-jwt-token");
   });
 
-  // ── Success ───────────────────────────────────────────────────────
   test("returns 201 on successful registration", async () => {
     const app = createApp();
     const res = await request(app)
@@ -77,24 +117,27 @@ describe("POST /auth/register", () => {
     expect(res.status).toBe(201);
   });
 
-  test("response has a message field on success", async () => {
+  test("response has token, username, displayName, bio, status, createdAt on success", async () => {
     const app = createApp();
     const res = await request(app)
       .post("/auth/register")
       .send({ username: "alice", password: "password123" });
-    expect(res.body).toHaveProperty("message");
+    expect(res.body).toHaveProperty("token");
+    expect(res.body).toHaveProperty("username");
+    expect(res.body).toHaveProperty("displayName");
+    expect(res.body).toHaveProperty("bio");
+    expect(res.body).toHaveProperty("status");
+    expect(res.body).toHaveProperty("createdAt");
   });
 
-  test("message does not contain the username or password", async () => {
+  test("displayName equals username on registration", async () => {
     const app = createApp();
     const res = await request(app)
       .post("/auth/register")
       .send({ username: "alice", password: "password123" });
-    expect(res.body.message).not.toContain("alice");
-    expect(res.body.message).not.toContain("password123");
+    expect(res.body.displayName).toBe("alice");
   });
 
-  // ── Missing fields ────────────────────────────────────────────────
   test("returns 400 when username is missing", async () => {
     const app = createApp();
     const res = await request(app)
@@ -123,8 +166,6 @@ describe("POST /auth/register", () => {
     expect(res.body.code).toBe('missing_credentials');
   });
 
-
-  // ── Username validation ───────────────────────────────────────────
   test("returns 400 when username is empty after trim", async () => {
     const app = createApp();
     const res = await request(app)
@@ -249,7 +290,6 @@ describe("POST /auth/register", () => {
     expect(res.status).toBe(201);
   });
 
-  // ── Password validation ──────────────────────────────────────────
   test("returns 400 when password is fewer than 6 characters", async () => {
     const app = createApp();
     const res = await request(app)
@@ -286,7 +326,6 @@ describe("POST /auth/register", () => {
     expect(res.status).toBe(201);
   });
 
-  // ── Uniqueness ───────────────────────────────────────────────────
   test("returns 400 when username already exists", async () => {
     User.findOne.mockResolvedValue({ username: "alice" });
     const app = createApp();
@@ -309,11 +348,10 @@ describe("POST /auth/register", () => {
     expect(res.body.code).toBe('username_taken');
   });
 
-  // ── MongoDB duplicate key race (error code 11000) ────────────────
   test("returns 400 when save() throws duplicate key error 11000 (MongoDB race)", async () => {
     const dupError = Object.assign(new Error("duplicate key"), { code: 11000 });
-    User.prototype.save.mockRejectedValue(dupError);
-
+    User.prototype.save = jest.fn().mockRejectedValue(dupError);
+    User.findOne.mockResolvedValue(null);
     const app = createApp();
     const res = await request(app)
       .post("/auth/register")
@@ -332,6 +370,10 @@ describe("POST /auth/login", () => {
     _id: "user-id-123",
     username: "alice",
     password: "hashed-password",
+    displayName: "Alice Cool",
+    bio: "Just chatting!",
+    status: "online",
+    createdAt: new Date("2026-01-15T10:00:00Z")
   };
 
   beforeEach(() => {
@@ -340,7 +382,6 @@ describe("POST /auth/login", () => {
     jwt.sign.mockReturnValue("mock-jwt-token");
   });
 
-  // ── Success ──────────────────────────────────────────────────────
   test("returns 200 on successful login", async () => {
     const app = createApp();
     const res = await request(app)
@@ -349,13 +390,33 @@ describe("POST /auth/login", () => {
     expect(res.status).toBe(200);
   });
 
-  test("returns token and username on success", async () => {
+  test("returns token, username, displayName, bio, status, createdAt on success", async () => {
     const app = createApp();
     const res = await request(app)
       .post("/auth/login")
       .send({ username: "alice", password: "password123" });
     expect(res.body).toHaveProperty("token");
     expect(res.body).toHaveProperty("username");
+    expect(res.body).toHaveProperty("displayName");
+    expect(res.body).toHaveProperty("bio");
+    expect(res.body).toHaveProperty("status");
+    expect(res.body).toHaveProperty("createdAt");
+  });
+
+  test("displayName matches stored value", async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post("/auth/login")
+      .send({ username: "alice", password: "password123" });
+    expect(res.body.displayName).toBe("Alice Cool");
+  });
+
+  test("status in response is 'online'", async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post("/auth/login")
+      .send({ username: "alice", password: "password123" });
+    expect(res.body.status).toBe("online");
   });
 
   test("username in response matches stored username", async () => {
@@ -371,7 +432,6 @@ describe("POST /auth/login", () => {
     await request(app)
       .post("/auth/login")
       .send({ username: "alice", password: "password123" });
-
     expect(jwt.sign).toHaveBeenCalledWith(
       { id: "user-id-123", username: "alice" },
       expect.any(String),
@@ -379,7 +439,6 @@ describe("POST /auth/login", () => {
     );
   });
 
-  // ── Missing fields ───────────────────────────────────────────────
   test("returns 400 when username is missing", async () => {
     const app = createApp();
     const res = await request(app)
@@ -408,7 +467,6 @@ describe("POST /auth/login", () => {
     expect(res.body.code).toBe('missing_credentials');
   });
 
-  // ── Failed authentication ────────────────────────────────────────
   test("returns 400 when user does not exist", async () => {
     User.findOne.mockResolvedValue(null);
     const app = createApp();
@@ -432,14 +490,12 @@ describe("POST /auth/login", () => {
   });
 
   test("error message is identical for 'user not found' and 'wrong password'", async () => {
-    // Case 1: user not found
     User.findOne.mockResolvedValue(null);
     const app1 = createApp();
     const res1 = await request(app1)
       .post("/auth/login")
       .send({ username: "nonexistent", password: "password123" });
 
-    // Case 2: wrong password
     User.findOne.mockResolvedValue(existingUser);
     bcrypt.compare.mockResolvedValue(false);
     const app2 = createApp();
@@ -461,5 +517,227 @@ describe("POST /auth/login", () => {
     expect(res.status).toBe(400);
     expect(res.body).toHaveProperty('error');
     expect(res.body.code).toBe('password_too_long');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// GET /auth/me
+// ─────────────────────────────────────────────────────────────────────
+describe("GET /auth/me", () => {
+  const mockUser = {
+    _id: "user-id-123",
+    username: "alice",
+    displayName: "Alice Cool",
+    bio: "Just chatting!",
+    status: "online",
+    createdAt: new Date("2026-01-15T10:00:00Z"),
+    lastLogout: null
+  };
+
+  beforeEach(() => {
+    jwt.verify.mockReturnValue({ id: "user-id-123", username: "alice", iat: Math.floor(Date.now() / 1000) });
+    mockFindByIdReturns(mockUser);
+  });
+
+  test("returns 401 without JWT", async () => {
+    const app = createApp();
+    const res = await request(app).get("/auth/me");
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe('authentication_required');
+  });
+
+  test("returns 200 with valid JWT", async () => {
+    const app = createApp();
+    const res = await request(app)
+      .get("/auth/me")
+      .set("Authorization", "Bearer valid-token");
+    expect(res.status).toBe(200);
+  });
+
+  test("returns the profile object with correct fields", async () => {
+    const app = createApp();
+    const res = await request(app)
+      .get("/auth/me")
+      .set("Authorization", "Bearer valid-token");
+    expect(res.body).toHaveProperty("username");
+    expect(res.body).toHaveProperty("displayName");
+    expect(res.body).toHaveProperty("bio");
+    expect(res.body).toHaveProperty("status");
+    expect(res.body).toHaveProperty("createdAt");
+    expect(res.body.username).toBe("alice");
+    expect(res.body.displayName).toBe("Alice Cool");
+    expect(res.body.bio).toBe("Just chatting!");
+    expect(res.body.status).toBe("online");
+  });
+
+  test("does not include a password field", async () => {
+    const app = createApp();
+    const res = await request(app)
+      .get("/auth/me")
+      .set("Authorization", "Bearer valid-token");
+    expect(res.body).not.toHaveProperty("password");
+  });
+
+  test("returns 404 when user is not found", async () => {
+    mockFindByIdReturns(null);
+    const app = createApp();
+    const res = await request(app)
+      .get("/auth/me")
+      .set("Authorization", "Bearer valid-token");
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('user_not_found');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// PUT /auth/profile
+// ─────────────────────────────────────────────────────────────────────
+describe("PUT /auth/profile", () => {
+  const mockUser = {
+    _id: "user-id-123",
+    username: "alice",
+    displayName: "Alice Cool",
+    bio: "Just chatting!",
+    status: "online",
+    createdAt: new Date("2026-01-15T10:00:00Z"),
+    lastLogout: null
+  };
+
+  beforeEach(() => {
+    jwt.verify.mockReturnValue({ id: "user-id-123", username: "alice", iat: Math.floor(Date.now() / 1000) });
+    // GET /auth/me middleware check requires findById to work for JWT revocation
+    mockFindByIdReturns(mockUser);
+  });
+
+  test("returns 401 without JWT", async () => {
+    const app = createApp();
+    const res = await request(app)
+      .put("/auth/profile")
+      .send({ displayName: "Alice Smith" });
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe('authentication_required');
+  });
+
+  test("returns 400 when displayName is empty after trim", async () => {
+    const app = createAppWithIo();
+    const res = await request(app)
+      .put("/auth/profile")
+      .set("Authorization", "Bearer valid-token")
+      .send({ displayName: "" });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('invalid_display_name');
+  });
+
+  test("returns 400 when displayName exceeds 50 codepoints (51 characters)", async () => {
+    const app = createAppWithIo();
+    const res = await request(app)
+      .put("/auth/profile")
+      .set("Authorization", "Bearer valid-token")
+      .send({ displayName: "a".repeat(51) });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('invalid_display_name');
+  });
+
+  test("returns 400 when status is 'offline'", async () => {
+    const app = createAppWithIo();
+    const res = await request(app)
+      .put("/auth/profile")
+      .set("Authorization", "Bearer valid-token")
+      .send({ status: "offline" });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('invalid_status');
+  });
+
+  test("returns 400 when bio exceeds 160 codepoints", async () => {
+    const app = createAppWithIo();
+    const res = await request(app)
+      .put("/auth/profile")
+      .set("Authorization", "Bearer valid-token")
+      .send({ bio: "x".repeat(161) });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('invalid_bio');
+  });
+
+  test("returns 400 when bio contains HTML tags", async () => {
+    const app = createAppWithIo();
+    const res = await request(app)
+      .put("/auth/profile")
+      .set("Authorization", "Bearer valid-token")
+      .send({ bio: "<script>alert('xss')</script>" });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('invalid_bio');
+  });
+
+  // Helper to make findByIdAndUpdate return a value via .select() (no .lean() in route)
+  function mockFindByIdAndUpdateReturns(userObj) {
+    User.findByIdAndUpdate.mockReturnValue({
+      select: () => Promise.resolve(userObj)
+    });
+  }
+
+  test("update with only bio does not overwrite displayName", async () => {
+    const updatedUser = {
+      ...mockUser,
+      displayName: "Alice Cool",
+      bio: "New bio only",
+      status: "online"
+    };
+    mockFindByIdAndUpdateReturns(updatedUser);
+    const app = createAppWithIo();
+    const res = await request(app)
+      .put("/auth/profile")
+      .set("Authorization", "Bearer valid-token")
+      .send({ bio: "New bio only" });
+    expect(res.status).toBe(200);
+    expect(res.body.displayName).toBe("Alice Cool");
+    expect(res.body.bio).toBe("New bio only");
+  });
+
+  test("returns the updated profile on success", async () => {
+    const updatedUser = {
+      ...mockUser,
+      displayName: "Alice Smith",
+      bio: "Updated bio!",
+      status: "away"
+    };
+    mockFindByIdAndUpdateReturns(updatedUser);
+    const app = createAppWithIo();
+    const res = await request(app)
+      .put("/auth/profile")
+      .set("Authorization", "Bearer valid-token")
+      .send({ displayName: "Alice Smith", bio: "Updated bio!", status: "away" });
+    expect(res.status).toBe(200);
+    expect(res.body.displayName).toBe("Alice Smith");
+    expect(res.body.bio).toBe("Updated bio!");
+    expect(res.body.status).toBe("away");
+  });
+
+  test("broadcasts profile_updated socket event on success", async () => {
+    const updatedUser = {
+      ...mockUser,
+      displayName: "Alice Smith",
+      status: "away"
+    };
+    mockFindByIdAndUpdateReturns(updatedUser);
+    const app = createAppWithIo();
+    await request(app)
+      .put("/auth/profile")
+      .set("Authorization", "Bearer valid-token")
+      .send({ displayName: "Alice Smith", status: "away" });
+    expect(mockIo.emit).toHaveBeenCalledWith("profile_updated", {
+      username: "alice",
+      displayName: "Alice Smith",
+      status: "away"
+    });
+  });
+
+  test("returns 400 when no valid fields are provided", async () => {
+    const app = createAppWithIo();
+    const res = await request(app)
+      .put("/auth/profile")
+      .set("Authorization", "Bearer valid-token")
+      .send({});
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('no_fields');
   });
 });

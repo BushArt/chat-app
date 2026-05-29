@@ -18,6 +18,14 @@ let sendingGlobal = false;
 let sendingPrivate = false;
 let timeFormat = safeLocalStorageGet("chat_time_format") || "relative";
 
+// Profile fields
+let currentDisplayName = null;
+let currentBio = null;
+let currentStatus = null;
+let currentCreatedAt = null;
+
+const onlineUsersMap = new Map(); // username -> { displayName, status }
+
 const typingState = { global: new Set(), private: new Set() };
 const typingTimers = {};
 const optimisticByChannel = { global: [], private: [] };
@@ -37,6 +45,11 @@ export function isSendingGlobal() { return sendingGlobal; }
 export function isSendingPrivate() { return sendingPrivate; }
 export function getTimeFormat() { return timeFormat; }
 
+export function getCurrentDisplayName() { return currentDisplayName || currentUser; }
+export function getCurrentBio() { return currentBio || ''; }
+export function getCurrentStatus() { return currentStatus || 'online'; }
+export function getCurrentCreatedAt() { return currentCreatedAt; }
+
 // Setters
 export function setCurrentUser(value) { currentUser = value; }
 export function setCurrentToken(value) { currentToken = value; }
@@ -48,6 +61,66 @@ export function setUnreadPrivate(value) { unreadPrivate = value; }
 export function setSendingGlobal(value) { sendingGlobal = value; }
 export function setSendingPrivate(value) { sendingPrivate = value; }
 export function setTimeFormat(value) { timeFormat = value; }
+
+export function setCurrentDisplayName(value) { currentDisplayName = value; }
+export function setCurrentBio(value) { currentBio = value; }
+export function setCurrentStatus(value) { currentStatus = value; }
+export function setCurrentCreatedAt(value) { currentCreatedAt = value; }
+
+/**
+ * Populate all profile fields from a login/register/me response.
+ */
+export function setProfileFromResponse(data) {
+  currentDisplayName = data.displayName || data.username || currentUser;
+  currentBio = data.bio || '';
+  currentStatus = data.status || 'online';
+  currentCreatedAt = data.createdAt || null;
+}
+
+/**
+ * Get the onlineUsersMap object (read-only reference).
+ */
+export function getOnlineUsersMap() {
+  return onlineUsersMap;
+}
+
+/**
+ * Set the online user list from either the old string[] format or the new object[] format.
+ */
+export function setOnlineUsersFromList(list) {
+  onlineUsersMap.clear();
+  if (!Array.isArray(list)) return;
+  list.forEach((entry) => {
+    if (typeof entry === 'string') {
+      // Old format: array of strings
+      onlineUsersMap.set(entry, { username: entry, displayName: entry, status: 'online' });
+    } else if (entry && typeof entry === 'object') {
+      // New format: array of { username, displayName, status }
+      const username = entry.username;
+      if (username) {
+        onlineUsersMap.set(username, {
+          username,
+          displayName: entry.displayName || username,
+          status: entry.status || 'online'
+        });
+      }
+    }
+  });
+}
+
+/**
+ * Update a single entry in the onlineUsersMap (from profile_updated event).
+ */
+export function updateOnlineUser(username, displayName, status) {
+  if (!username) return;
+  if (onlineUsersMap.has(username)) {
+    onlineUsersMap.set(username, {
+      username,
+      displayName: displayName || onlineUsersMap.get(username).displayName,
+      status: status || onlineUsersMap.get(username).status
+    });
+  }
+}
 
 // Typing state
 export function addTypingUser(channel, username) { typingState[channel].add(username); }
@@ -126,6 +199,11 @@ export function resetAllState() {
   unreadPrivate = 0;
   sendingGlobal = false;
   sendingPrivate = false;
+  currentDisplayName = null;
+  currentBio = null;
+  currentStatus = null;
+  currentCreatedAt = null;
+  onlineUsersMap.clear();
 
   typingState.global.clear();
   typingState.private.clear();

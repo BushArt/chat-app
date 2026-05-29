@@ -23,6 +23,11 @@ if (process.env.NODE_ENV !== 'test') {
   missingEnv.push('TEST_MONGO_URI');
 }
 
+// Require CLOUDINARY_URL in production
+if (process.env.NODE_ENV === 'production' && !process.env.CLOUDINARY_URL) {
+  missingEnv.push('CLOUDINARY_URL');
+}
+
 if (missingEnv.length > 0) {
   const logger = require('../utils/logger');
   logger.error({ event: 'env_missing', missing: missingEnv });

@@ -53,6 +53,10 @@ const userSchema = new mongoose.Schema({
   lastLogout: {
     type: Date,
     default: null
+  },
+  avatarUrl: {
+    type: String,
+    default: null
   }
 }, {
   timestamps: true

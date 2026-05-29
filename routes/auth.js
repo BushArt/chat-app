@@ -6,6 +6,8 @@ const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const User = require('../models/User');
 const HttpError = require('../utils/HttpError');
+const cloudinary = require('../config/cloudinary');
+const { avatarUpload } = require('../middleware/upload');
 
 const isTestEnvironment = process.env.NODE_ENV === 'test';
 
@@ -118,8 +120,25 @@ function buildProfile(user) {
     displayName: user.displayName || user.username,
     bio: user.bio || '',
     status: user.status || 'online',
+    avatarUrl: user.avatarUrl || null,
     createdAt: user.createdAt
   };
+}
+
+// ─────────────────────────────────────────
+// Cloudinary upload helper (promisified)
+// ─────────────────────────────────────────
+function uploadToCloudinary(buffer, options) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      options,
+      (error, result) => {
+        if (error) reject(error);
+        else resolve(result);
+      }
+    );
+    stream.end(buffer);
+  });
 }
 
 // ─────────────────────────────────────────
@@ -292,10 +311,12 @@ router.get('/me', verifyToken, async (req, res, next) => {
 // ─────────────────────────────────────────
 // PUT /auth/profile
 // Updates the current user's profile.
-// Accepts any subset of { displayName, bio, status }.
+// Accepts multipart/form-data (with optional avatar file) or JSON body
+// with any subset of { displayName, bio, status }.
 // ─────────────────────────────────────────
-router.put('/profile', verifyToken, profileLimiter, async (req, res, next) => {
+router.put('/profile', verifyToken, profileLimiter, avatarUpload.single('avatar'), async (req, res, next) => {
   try {
+    // req.body fields come from multer (multipart) or express.json() (JSON)
     const { displayName, bio, status } = req.body;
 
     const updateFields = {};
@@ -342,6 +363,22 @@ router.put('/profile', verifyToken, profileLimiter, async (req, res, next) => {
       changedFields.push('status');
     }
 
+    // Handle avatar upload if a file was provided
+    if (req.file) {
+      try {
+        const result = await uploadToCloudinary(req.file.buffer, {
+          folder: 'chat-app/avatars',
+          public_id: `user_${req.user.username}`,
+          overwrite: true
+        });
+        updateFields.avatarUrl = result.secure_url;
+        changedFields.push('avatarUrl');
+      } catch (cloudinaryErr) {
+        logger.error({ event: 'avatar_upload_error', username: req.user.username, err: String(cloudinaryErr) });
+        return next(new HttpError('Failed to upload avatar.', 500, 'avatar_upload_failed'));
+      }
+    }
+
     if (Object.keys(updateFields).length === 0) {
       return next(new HttpError('No valid fields to update.', 400, 'no_fields'));
     }
@@ -365,7 +402,8 @@ router.put('/profile', verifyToken, profileLimiter, async (req, res, next) => {
         io.emit('profile_updated', {
           username: user.username,
           displayName: user.displayName || user.username,
-          status: user.status || 'online'
+          status: user.status || 'online',
+          avatarUrl: user.avatarUrl || null
         });
       }
     } catch (socketErr) {

@@ -25,13 +25,14 @@ async function getOnlineList() {
 
   try {
     const users = await User.find({ username: { $in: usernames } })
-      .select('username displayName status')
+      .select('username displayName status avatarUrl')
       .lean();
 
     return users.map(u => ({
       username: u.username,
       displayName: u.displayName || u.username,
-      status: u.status || 'online'
+      status: u.status || 'online',
+      avatarUrl: u.avatarUrl || null
     }));
   } catch {
     // Fall back to string array for backward compatibility

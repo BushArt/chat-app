@@ -9,6 +9,16 @@ jest.mock("express-rate-limit", () => () => (req, res, next) => next());
 jest.mock("bcryptjs");
 jest.mock("jsonwebtoken");
 
+// Mock cloudinary so we never hit the real API in tests
+jest.mock("cloudinary", () => ({
+  v2: {
+    config: jest.fn(),
+    uploader: {
+      upload_stream: jest.fn()
+    }
+  }
+}));
+
 // Self-contained User mock: constructor stores properties, static methods are jest.fn()
 jest.mock("../../../models/User", () => {
   // Use a factory function so that prototype.save is available
@@ -117,7 +127,7 @@ describe("POST /auth/register", () => {
     expect(res.status).toBe(201);
   });
 
-  test("response has token, username, displayName, bio, status, createdAt on success", async () => {
+  test("response has token, username, displayName, bio, status, avatarUrl, createdAt on success", async () => {
     const app = createApp();
     const res = await request(app)
       .post("/auth/register")
@@ -127,6 +137,7 @@ describe("POST /auth/register", () => {
     expect(res.body).toHaveProperty("displayName");
     expect(res.body).toHaveProperty("bio");
     expect(res.body).toHaveProperty("status");
+    expect(res.body).toHaveProperty("avatarUrl");
     expect(res.body).toHaveProperty("createdAt");
   });
 
@@ -390,7 +401,7 @@ describe("POST /auth/login", () => {
     expect(res.status).toBe(200);
   });
 
-  test("returns token, username, displayName, bio, status, createdAt on success", async () => {
+  test("returns token, username, displayName, bio, status, avatarUrl, createdAt on success", async () => {
     const app = createApp();
     const res = await request(app)
       .post("/auth/login")
@@ -400,6 +411,7 @@ describe("POST /auth/login", () => {
     expect(res.body).toHaveProperty("displayName");
     expect(res.body).toHaveProperty("bio");
     expect(res.body).toHaveProperty("status");
+    expect(res.body).toHaveProperty("avatarUrl");
     expect(res.body).toHaveProperty("createdAt");
   });
 
@@ -727,7 +739,8 @@ describe("PUT /auth/profile", () => {
     expect(mockIo.emit).toHaveBeenCalledWith("profile_updated", {
       username: "alice",
       displayName: "Alice Smith",
-      status: "away"
+      status: "away",
+      avatarUrl: null
     });
   });
 
@@ -739,5 +752,116 @@ describe("PUT /auth/profile", () => {
       .send({});
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('no_fields');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// Avatar upload via PUT /auth/profile
+// ─────────────────────────────────────────────────────────────────────
+describe("PUT /auth/profile — avatar upload", () => {
+  const mockUser = {
+    _id: "user-id-123",
+    username: "alice",
+    displayName: "Alice Cool",
+    bio: "Just chatting!",
+    status: "online",
+    avatarUrl: null,
+    createdAt: new Date("2026-01-15T10:00:00Z"),
+    lastLogout: null
+  };
+
+  const cloudinary = require("cloudinary");
+
+  beforeEach(() => {
+    jwt.verify.mockReturnValue({ id: "user-id-123", username: "alice", iat: Math.floor(Date.now() / 1000) });
+    mockFindByIdReturns(mockUser);
+    // Default cloudinary mock: succeed with a fixed URL
+    cloudinary.v2.uploader.upload_stream.mockImplementation((options, callback) => {
+      callback(null, { secure_url: "https://res.cloudinary.com/test/chat-app/avatars/user_alice" });
+      // Return a mock stream with .end()
+      return { end: jest.fn() };
+    });
+  });
+
+  test("returns 200 with avatarUrl when a valid image file is uploaded", async () => {
+    const updatedUser = {
+      ...mockUser,
+      avatarUrl: "https://res.cloudinary.com/test/chat-app/avatars/user_alice"
+    };
+    User.findByIdAndUpdate.mockReturnValue({
+      select: () => Promise.resolve(updatedUser)
+    });
+
+    const app = createAppWithIo();
+    const res = await request(app)
+      .put("/auth/profile")
+      .set("Authorization", "Bearer valid-token")
+      .attach("avatar", Buffer.from("fake-image-data"), "avatar.jpg");
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("avatarUrl");
+    expect(res.body.avatarUrl).toBe("https://res.cloudinary.com/test/chat-app/avatars/user_alice");
+  });
+
+  test("returns 400 when uploaded file exceeds 5 MB", async () => {
+    const app = createAppWithIo();
+    const largeBuffer = Buffer.alloc(6 * 1024 * 1024); // 6 MB
+    const res = await request(app)
+      .put("/auth/profile")
+      .set("Authorization", "Bearer valid-token")
+      .attach("avatar", largeBuffer, "large.jpg");
+
+    expect(res.status).toBe(400);
+  });
+
+  test("returns 400 when uploaded file has a disallowed MIME type", async () => {
+    const app = createAppWithIo();
+    const res = await request(app)
+      .put("/auth/profile")
+      .set("Authorization", "Bearer valid-token")
+      .attach("avatar", Buffer.from("fake-pdf"), "document.pdf");
+
+    expect(res.status).toBe(400);
+  });
+
+  test("upload with no file does not overwrite existing avatarUrl", async () => {
+    const userWithAvatar = {
+      ...mockUser,
+      avatarUrl: "https://res.cloudinary.com/test/chat-app/avatars/user_alice"
+    };
+    mockFindByIdReturns(userWithAvatar);
+
+    const updatedUser = {
+      ...userWithAvatar,
+      bio: "Updated bio"
+    };
+    User.findByIdAndUpdate.mockReturnValue({
+      select: () => Promise.resolve(updatedUser)
+    });
+
+    const app = createAppWithIo();
+    const res = await request(app)
+      .put("/auth/profile")
+      .set("Authorization", "Bearer valid-token")
+      .send({ bio: "Updated bio" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.avatarUrl).toBe("https://res.cloudinary.com/test/chat-app/avatars/user_alice");
+  });
+
+  test("returns 500 when Cloudinary upload fails", async () => {
+    cloudinary.v2.uploader.upload_stream.mockImplementation((options, callback) => {
+      callback(new Error("Cloudinary error"), null);
+      return { end: jest.fn() };
+    });
+
+    const app = createAppWithIo();
+    const res = await request(app)
+      .put("/auth/profile")
+      .set("Authorization", "Bearer valid-token")
+      .attach("avatar", Buffer.from("fake-image-data"), "avatar.jpg");
+
+    expect(res.status).toBe(500);
+    expect(res.body).toHaveProperty("code", "avatar_upload_failed");
   });
 });

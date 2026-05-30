@@ -4,6 +4,43 @@ import * as utils from './utils.js';
 
 let dom;
 
+/**
+ * Deterministically generate a background color from a string (username).
+ */
+function colorFromString(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 55%, 50%)`;
+}
+
+/**
+ * Create an avatar element (img if URL present, otherwise initials circle).
+ */
+export function createAvatarElement(avatarUrl, displayName, sizeClass = '') {
+  const el = document.createElement('span');
+  el.className = `avatar ${sizeClass}`.trim();
+  if (avatarUrl) {
+    const img = document.createElement('img');
+    img.className = 'avatar-img';
+    img.src = avatarUrl;
+    img.alt = '';
+    img.loading = 'lazy';
+    el.appendChild(img);
+  } else {
+    const initial = displayName && displayName.length > 0 ? [...displayName][0].toUpperCase() : '?';
+    const bg = colorFromString(displayName || '?');
+    const initialEl = document.createElement('span');
+    initialEl.className = 'avatar-initial';
+    initialEl.textContent = initial;
+    initialEl.style.background = bg;
+    el.appendChild(initialEl);
+  }
+  return el;
+}
+
 function getDateKey(time) {
   const date = new Date(time);
   const year = date.getFullYear();
@@ -54,7 +91,20 @@ export function initDom() {
     btnLogin: document.getElementById("btn-login"),
     btnRegister: document.getElementById("btn-register"),
     btnLogout: document.getElementById("btn-logout"),
-    btnOpenChat: document.getElementById("btn-open-chat")
+    btnOpenChat: document.getElementById("btn-open-chat"),
+    // Profile panel elements
+    profilePanel: document.getElementById("profile-panel"),
+    btnEditProfile: document.getElementById("btn-edit-profile"),
+    profileDisplayName: document.getElementById("profile-display-name"),
+    profileDetail: document.getElementById("profile-detail"),
+    profileAvatarPreview: document.getElementById("profile-avatar-preview"),
+    editDisplayName: document.getElementById("edit-display-name"),
+    editBio: document.getElementById("edit-bio"),
+    editStatus: document.getElementById("edit-status"),
+    btnSaveProfile: document.getElementById("btn-save-profile"),
+    btnCancelProfile: document.getElementById("btn-cancel-profile"),
+    btnUploadAvatar: document.getElementById("btn-upload-avatar"),
+    avatarFileInput: document.getElementById("avatar-file-input")
   };
   return dom;
 }
@@ -120,6 +170,17 @@ export function appendMessage(containerId, sender, text, time, type, options = {
   bubble.classList.add("message", type);
   if (options.pending) bubble.classList.add("pending");
   if (options.clientId) bubble.dataset.clientId = options.clientId;
+
+  // For received messages, show sender avatar
+  if (type === "received") {
+    // Determine display name and avatar URL for the sender
+    const onlineMap = state.getOnlineUsersMap();
+    const userData = onlineMap.get(sender);
+    const displayName = userData ? userData.displayName : sender;
+    const avatarUrl = userData ? userData.avatarUrl : null;
+    const avatar = createAvatarElement(avatarUrl, displayName);
+    bubble.appendChild(avatar);
+  }
 
   const textDiv = document.createElement("div");
   textDiv.textContent = text;
@@ -319,13 +380,14 @@ const STATUS_CLASS = {
 
 function resolveUserEntry(entry) {
   if (typeof entry === 'string') {
-    return { username: entry, displayName: entry, status: 'online' };
+    return { username: entry, displayName: entry, status: 'online', avatarUrl: null };
   }
   if (entry && typeof entry === 'object') {
     return {
       username: entry.username || '',
       displayName: entry.displayName || entry.username || '',
-      status: entry.status || 'online'
+      status: entry.status || 'online',
+      avatarUrl: entry.avatarUrl || null
     };
   }
   return null;
@@ -344,6 +406,9 @@ export function renderOnlineUsers(users) {
     btn.setAttribute("role", "option");
     btn.setAttribute("aria-label", "Start private chat with " + user.displayName);
 
+    // Avatar thumbnail
+    const avatar = createAvatarElement(user.avatarUrl, user.displayName);
+
     const dot = document.createElement("span");
     dot.className = STATUS_CLASS[user.status] || "online-dot";
 
@@ -351,13 +416,14 @@ export function renderOnlineUsers(users) {
     name.textContent = user.displayName;
     name.title = user.username; // Show raw username as tooltip
 
+    btn.appendChild(avatar);
     btn.appendChild(dot);
     btn.appendChild(name);
     btn.onclick = () => {
       if (user.username === state.getCurrentUser()) return;
       dom.recipientInput.value = user.username;
       switchTab("private");
-      
+
       // Auto start chat when clicking online user
       dom.recipientInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     };
@@ -408,6 +474,8 @@ export function resetChatUi() {
   updateCharCounter(dom.globalInput, dom.globalCounter, dom.sendGlobal);
   updateCharCounter(dom.privateInput, dom.privateCounter, dom.sendPrivate);
   switchTab("global");
+  // Hide profile panel on logout
+  if (dom.profilePanel) dom.profilePanel.classList.add("hidden");
 }
 
 export function showAuthError(message, isSuccess = false) {
@@ -429,4 +497,79 @@ export function scrollPrivateToBottom() {
   if (dom.privateMessages) {
     utils.scrollToBottom(dom.privateMessages);
   }
+}
+
+// ── Profile Panel ──
+
+/**
+ * Refresh the profile panel summary (header area) with current state values.
+ */
+export function refreshProfileHeader() {
+  if (!dom.profileDisplayName) return;
+  const displayName = state.getCurrentDisplayName();
+  const username = state.getCurrentUser();
+  const bio = state.getCurrentBio();
+  const avatarUrl = state.getCurrentAvatarUrl();
+
+  dom.profileDisplayName.textContent = displayName || username;
+
+  const parts = [];
+  if (username) parts.push('@' + username);
+  if (bio) parts.push(bio);
+  dom.profileDetail.textContent = parts.join(' · ') || '';
+
+  // Update summary avatar
+  if (dom.profileAvatarPreview) {
+    const newAvatar = createAvatarElement(avatarUrl, displayName || username);
+    dom.profileAvatarPreview.replaceWith(newAvatar);
+    dom.profileAvatarPreview = newAvatar;
+  }
+}
+
+/**
+ * Open the profile edit panel and populate fields with current values.
+ */
+export function showProfileEditor() {
+  if (!dom.profilePanel) return;
+  dom.profilePanel.classList.remove("hidden");
+  dom.editDisplayName.value = state.getCurrentDisplayName();
+  dom.editBio.value = state.getCurrentBio() || '';
+  dom.editStatus.value = state.getCurrentStatus();
+  // Update editor avatar preview
+  const editorPreview = document.getElementById('editor-avatar-preview');
+  if (editorPreview) {
+    const newPreview = createAvatarElement(state.getCurrentAvatarUrl(), state.getCurrentDisplayName());
+    editorPreview.replaceWith(newPreview);
+    document.getElementById('editor-avatar-preview')?.replaceWith(newPreview);
+  }
+}
+
+/**
+ * Close the profile edit panel.
+ */
+export function hideProfileEditor() {
+  if (!dom.profilePanel) return;
+  dom.profilePanel.classList.add("hidden");
+  // Reset file input
+  if (dom.avatarFileInput) dom.avatarFileInput.value = '';
+}
+
+/**
+ * Show a preview of the selected avatar file before upload.
+ */
+export function showAvatarPreview(file) {
+  const previewContainer = document.getElementById('editor-avatar-preview');
+  if (!previewContainer) return;
+  if (!file) {
+    // Reset to current
+    const newPreview = createAvatarElement(state.getCurrentAvatarUrl(), state.getCurrentDisplayName());
+    previewContainer.replaceWith(newPreview);
+    return;
+  }
+  const url = URL.createObjectURL(file);
+  const img = document.createElement('span');
+  img.className = 'avatar';
+  img.innerHTML = `<img class="avatar-img" src="${url}" alt="Avatar preview">`;
+  previewContainer.replaceWith(img);
+  // The caller will handle revoking the object URL after upload
 }

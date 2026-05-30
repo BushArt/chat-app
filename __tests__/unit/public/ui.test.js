@@ -488,7 +488,7 @@ describe('renderOnlineUsers', () => {
     const list = document.getElementById('online-list');
     expect(list.children.length).toBe(3);
     expect(list.children[0].classList.contains('online-user')).toBe(true);
-    expect(list.children[0].querySelector('span:last-child').textContent).toBe('alice');
+    expect(list.children[0].children[2].textContent).toBe('alice');
   });
 
   test('sets aria-label on each user button', () => {

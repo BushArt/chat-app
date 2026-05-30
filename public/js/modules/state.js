@@ -23,8 +23,9 @@ let currentDisplayName = null;
 let currentBio = null;
 let currentStatus = null;
 let currentCreatedAt = null;
+let currentAvatarUrl = null;
 
-const onlineUsersMap = new Map(); // username -> { displayName, status }
+const onlineUsersMap = new Map(); // username -> { displayName, status, avatarUrl }
 
 const typingState = { global: new Set(), private: new Set() };
 const typingTimers = {};
@@ -49,6 +50,7 @@ export function getCurrentDisplayName() { return currentDisplayName || currentUs
 export function getCurrentBio() { return currentBio || ''; }
 export function getCurrentStatus() { return currentStatus || 'online'; }
 export function getCurrentCreatedAt() { return currentCreatedAt; }
+export function getCurrentAvatarUrl() { return currentAvatarUrl || null; }
 
 // Setters
 export function setCurrentUser(value) { currentUser = value; }
@@ -66,6 +68,7 @@ export function setCurrentDisplayName(value) { currentDisplayName = value; }
 export function setCurrentBio(value) { currentBio = value; }
 export function setCurrentStatus(value) { currentStatus = value; }
 export function setCurrentCreatedAt(value) { currentCreatedAt = value; }
+export function setCurrentAvatarUrl(value) { currentAvatarUrl = value; }
 
 /**
  * Populate all profile fields from a login/register/me response.
@@ -75,6 +78,7 @@ export function setProfileFromResponse(data) {
   currentBio = data.bio || '';
   currentStatus = data.status || 'online';
   currentCreatedAt = data.createdAt || null;
+  currentAvatarUrl = data.avatarUrl || null;
 }
 
 /**
@@ -93,15 +97,16 @@ export function setOnlineUsersFromList(list) {
   list.forEach((entry) => {
     if (typeof entry === 'string') {
       // Old format: array of strings
-      onlineUsersMap.set(entry, { username: entry, displayName: entry, status: 'online' });
+      onlineUsersMap.set(entry, { username: entry, displayName: entry, status: 'online', avatarUrl: null });
     } else if (entry && typeof entry === 'object') {
-      // New format: array of { username, displayName, status }
+      // New format: array of { username, displayName, status, avatarUrl }
       const username = entry.username;
       if (username) {
         onlineUsersMap.set(username, {
           username,
           displayName: entry.displayName || username,
-          status: entry.status || 'online'
+          status: entry.status || 'online',
+          avatarUrl: entry.avatarUrl || null
         });
       }
     }
@@ -111,13 +116,15 @@ export function setOnlineUsersFromList(list) {
 /**
  * Update a single entry in the onlineUsersMap (from profile_updated event).
  */
-export function updateOnlineUser(username, displayName, status) {
+export function updateOnlineUser(username, displayName, status, avatarUrl) {
   if (!username) return;
   if (onlineUsersMap.has(username)) {
+    const existing = onlineUsersMap.get(username);
     onlineUsersMap.set(username, {
       username,
-      displayName: displayName || onlineUsersMap.get(username).displayName,
-      status: status || onlineUsersMap.get(username).status
+      displayName: displayName !== undefined ? displayName : existing.displayName,
+      status: status !== undefined ? status : existing.status,
+      avatarUrl: avatarUrl !== undefined ? avatarUrl : existing.avatarUrl
     });
   }
 }
@@ -203,6 +210,7 @@ export function resetAllState() {
   currentBio = null;
   currentStatus = null;
   currentCreatedAt = null;
+  currentAvatarUrl = null;
   onlineUsersMap.clear();
 
   typingState.global.clear();

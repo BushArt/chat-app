@@ -1,3 +1,7 @@
+/**
+ * @jest-environment jsdom
+ */
+
 import * as state from '../../../public/js/modules/state.js';
 
 beforeEach(() => {

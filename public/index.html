@@ -25,10 +25,52 @@
       <div id="header-actions">
         <button id="btn-time-format" aria-label="Toggle time format">Time: Relative</button>
         <button id="btn-theme-toggle" aria-label="Toggle dark mode">Theme</button>
+        <button id="btn-edit-profile" aria-label="Edit profile">Edit Profile</button>
         <button id="btn-logout" aria-label="Log out">Log Out</button>
       </div>
     </div>
     <div id="connection-banner" class="hidden" role="status" aria-live="polite"></div>
+
+    <!-- Profile Panel (collapsible) -->
+    <div id="profile-panel" class="hidden">
+      <div class="profile-header">
+        <span id="profile-avatar-preview" class="avatar"></span>
+        <div class="profile-info">
+          <div class="profile-name" id="profile-display-name"></div>
+          <div class="profile-detail" id="profile-detail"></div>
+        </div>
+      </div>
+
+      <div class="profile-field">
+        <label for="edit-display-name">Display Name</label>
+        <input type="text" id="edit-display-name" maxlength="50" autocomplete="off">
+      </div>
+
+      <div class="profile-field">
+        <label for="edit-bio">Bio</label>
+        <textarea id="edit-bio" maxlength="160" rows="2"></textarea>
+      </div>
+
+      <div class="profile-field">
+        <label for="edit-status">Status</label>
+        <select id="edit-status">
+          <option value="online">Online</option>
+          <option value="away">Away</option>
+          <option value="busy">Busy</option>
+        </select>
+      </div>
+
+      <div class="avatar-upload-wrapper">
+        <span id="editor-avatar-preview" class="avatar"></span>
+        <button id="btn-upload-avatar" type="button">Change Photo</button>
+        <input type="file" id="avatar-file-input" accept="image/jpeg,image/png,image/gif,image/webp" class="hidden">
+      </div>
+
+      <div class="profile-actions">
+        <button id="btn-save-profile" class="btn-save">Save</button>
+        <button id="btn-cancel-profile" class="btn-cancel">Cancel</button>
+      </div>
+    </div>
 
     <div id="main-layout">
       <div id="sidebar">

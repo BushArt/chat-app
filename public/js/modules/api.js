@@ -56,14 +56,30 @@ export async function fetchProfile() {
   return await res.json();
 }
 
-export async function updateProfile(fields) {
+export async function updateProfile(fields, avatarFile) {
+  let body;
+  let headers = {
+    Authorization: "Bearer " + state.getCurrentToken()
+  };
+
+  if (avatarFile) {
+    // Multipart form upload for avatar
+    const formData = new FormData();
+    for (const [key, value] of Object.entries(fields)) {
+      formData.append(key, value);
+    }
+    formData.append('avatar', avatarFile);
+    body = formData;
+  } else {
+    // JSON upload for text-only fields
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify(fields);
+  }
+
   const res = await fetch("/auth/profile", {
     method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: "Bearer " + state.getCurrentToken()
-    },
-    body: JSON.stringify(fields)
+    headers,
+    body
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Profile update failed.");

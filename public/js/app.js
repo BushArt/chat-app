@@ -333,6 +333,9 @@ function init() {
   dom.btnLogin.addEventListener("click", login);
   dom.btnRegister.addEventListener("click", register);
   dom.btnLogout.addEventListener("click", logout);
+  dom.btnEditProfile.addEventListener("click", openProfileEditor);
+  dom.btnSaveProfile.addEventListener("click", saveProfile);
+  dom.btnCancelProfile.addEventListener("click", closeProfileEditor);
   dom.btnTheme.addEventListener("click", () => {
     const current = document.documentElement.getAttribute("data-theme") || "light";
     ui.applyTheme(current === "dark" ? "light" : "dark");

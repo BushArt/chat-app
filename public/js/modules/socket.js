@@ -126,7 +126,7 @@ socket.on("online_users", (users) => {
 
 socket.on("profile_updated", (data) => {
   if (!data || !data.username) return;
-  state.updateOnlineUser(data.username, data.displayName, data.status);
+  state.updateOnlineUser(data.username, data.displayName, data.status, data.avatarUrl);
   // Re-render the online user list to reflect the change
   const currentList = Array.from(state.getOnlineUsersMap().values());
   ui.renderOnlineUsers(currentList);
@@ -134,6 +134,7 @@ socket.on("profile_updated", (data) => {
   if (data.username === state.getCurrentUser()) {
     state.setCurrentDisplayName(data.displayName);
     state.setCurrentStatus(data.status);
+    state.setCurrentAvatarUrl(data.avatarUrl);
   }
 });
 

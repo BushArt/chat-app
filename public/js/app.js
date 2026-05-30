@@ -8,6 +8,7 @@ import { connect } from './modules/socket.js';
 import * as ui from './modules/ui.js';
 
 let dom;
+let selectedAvatarFile = null;
 
 // ---- Auth functions ----
 async function register() {
@@ -315,6 +316,49 @@ async function restoreSession() {
   }
 }
 
+// ── Profile Editing ──
+function openProfileEditor() {
+  ui.refreshProfileHeader();
+  ui.showProfileEditor();
+  selectedAvatarFile = null;
+}
+
+function closeProfileEditor() {
+  ui.hideProfileEditor();
+  dom.avatarFileInput.value = '';
+  selectedAvatarFile = null;
+}
+
+async function saveProfile() {
+  const displayName = dom.editDisplayName.value.trim();
+  const bio = dom.editBio.value.trim();
+  const status = dom.editStatus.value;
+
+  const fields = {};
+  if (displayName) fields.displayName = displayName;
+  if (bio !== undefined) fields.bio = bio;
+  if (status) fields.status = status;
+
+  dom.btnSaveProfile.disabled = true;
+  dom.btnSaveProfile.textContent = 'Saving...';
+
+  try {
+    const result = await api.updateProfile(fields, selectedAvatarFile);
+    state.setProfileFromResponse(result);
+
+    // Update header
+    dom.loggedInAs.textContent = "Logged in as: " + (result.displayName || result.username);
+    // Update profile header summary
+    ui.refreshProfileHeader();
+    closeProfileEditor();
+  } catch (err) {
+    ui.showAuthError(err.message || "Profile update failed.");
+  } finally {
+    dom.btnSaveProfile.disabled = false;
+    dom.btnSaveProfile.textContent = 'Save';
+  }
+}
+
 function setupKeyboardShortcuts() {
   dom.recipientInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") startChat();
@@ -336,6 +380,21 @@ function init() {
   dom.btnEditProfile.addEventListener("click", openProfileEditor);
   dom.btnSaveProfile.addEventListener("click", saveProfile);
   dom.btnCancelProfile.addEventListener("click", closeProfileEditor);
+
+  // File upload button wiring
+  dom.btnUploadAvatar.addEventListener("click", () => dom.avatarFileInput.click());
+  dom.avatarFileInput.addEventListener("change", () => {
+    const file = dom.avatarFileInput.files[0];
+    if (!file) return;
+    selectedAvatarFile = file;
+    // Preview via object URL
+    const url = URL.createObjectURL(file);
+    const preview = document.getElementById('editor-avatar-preview');
+    if (preview) {
+      preview.innerHTML = `<img class="avatar-img" src="${url}" alt="Avatar preview">`;
+    }
+  });
+
   dom.btnTheme.addEventListener("click", () => {
     const current = document.documentElement.getAttribute("data-theme") || "light";
     ui.applyTheme(current === "dark" ? "light" : "dark");

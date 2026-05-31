@@ -3,12 +3,12 @@ import * as state from './state.js';
 import * as utils from './utils.js';
 import { appendMessage } from './ui.js';
 
-export function addOptimisticMessage(channel, text) {
+export function addOptimisticMessage(channel, text, attachment) {
   if (!state.FEATURE_FLAGS.optimisticSend) return null;
   const clientId = utils.createClientId();
-  state.pushOptimisticMessage(channel, { clientId, text });
+  state.pushOptimisticMessage(channel, { clientId, text, attachment });
   const containerId = channel === "global" ? "global-messages" : "private-messages";
-  appendMessage(containerId, state.getCurrentUser(), text, new Date().toISOString(), "sent", { pending: true, clientId });
+  appendMessage(containerId, state.getCurrentUser(), text, new Date().toISOString(), "sent", { pending: true, clientId, attachment });
   return clientId;
 }
 

@@ -92,6 +92,11 @@
           <div class="messages" id="global-messages" aria-live="polite"></div>
           <div class="typing-indicator" id="global-typing" aria-live="polite"></div>
           <div class="input-area">
+            <div class="input-toolbar">
+              <button id="global-file-btn" class="file-attach-btn" type="button" title="Attach file" aria-label="Attach file">📎</button>
+              <input type="file" id="global-file-input" class="hidden" accept="image/*,audio/*,video/*,application/pdf,.doc,.docx,.txt,.csv,.zip">
+            </div>
+            <div id="global-attachment-preview" class="attachment-preview hidden"></div>
             <div class="input-wrapper">
               <label class="visually-hidden" for="global-input">Message everyone</label>
               <textarea id="global-input" placeholder="Message everyone... / 向所有人發訊息..." rows="1" aria-label="Global message input"></textarea>
@@ -111,6 +116,11 @@
           <div class="messages" id="private-messages" aria-live="polite"></div>
           <div class="typing-indicator" id="private-typing" aria-live="polite"></div>
           <div class="input-area">
+            <div class="input-toolbar">
+              <button id="private-file-btn" class="file-attach-btn" type="button" title="Attach file" aria-label="Attach file">📎</button>
+              <input type="file" id="private-file-input" class="hidden" accept="image/*,audio/*,video/*,application/pdf,.doc,.docx,.txt,.csv,.zip">
+            </div>
+            <div id="private-attachment-preview" class="attachment-preview hidden"></div>
             <div class="input-wrapper">
               <label class="visually-hidden" for="private-input">Private message</label>
               <textarea id="private-input" placeholder="Type a message... / 輸入訊息..." rows="1" aria-label="Private message input"></textarea>

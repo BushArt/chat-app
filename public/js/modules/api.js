@@ -45,6 +45,52 @@ export async function fetchPrivateHistory(user1, user2, before) {
   return await res.json();
 }
 
+const ALLOWED_MIME_TYPES = new Set([
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp',
+  'audio/webm', 'audio/mp4', 'audio/mpeg', 'audio/ogg', 'audio/wav',
+  'application/pdf', 'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/zip', 'application/x-zip-compressed',
+  'text/plain', 'text/csv',
+  'video/mp4', 'video/webm'
+]);
+
+const MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024; // 25 MB
+
+/**
+ * Upload a file attachment. Returns attachment metadata on success.
+ * @param {File} file
+ * @param {string|null} room - private room ID (null for global)
+ * @param {string|null} receiver - recipient username (null for global)
+ * @param {boolean} isGlobal
+ * @returns {Promise<{type: string, filename: string, url: string, mimetype: string, size: number}>}
+ */
+export async function uploadAttachment(file, room, receiver, isGlobal) {
+  // Client-side pre-validation
+  if (!ALLOWED_MIME_TYPES.has(file.type)) {
+    throw new Error(`File type "${file.type}" is not supported.`);
+  }
+  if (file.size > MAX_ATTACHMENT_SIZE) {
+    throw new Error(`File exceeds the 25 MB size limit (${(file.size / 1024 / 1024).toFixed(1)} MB).`);
+  }
+
+  const formData = new FormData();
+  formData.append('file', file);
+  if (!isGlobal) {
+    formData.append('receiver', receiver);
+    formData.append('room', room);
+  }
+
+  const res = await fetch('/messages/upload', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + state.getCurrentToken() },
+    body: formData
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Upload failed.');
+  return data;
+}
+
 export async function fetchProfile() {
   const res = await fetch("/auth/me", {
     headers: { Authorization: "Bearer " + state.getCurrentToken() }

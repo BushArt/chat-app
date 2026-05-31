@@ -17,6 +17,7 @@ let unreadPrivate = 0;
 let sendingGlobal = false;
 let sendingPrivate = false;
 let timeFormat = safeLocalStorageGet("chat_time_format") || "relative";
+let pendingAttachment = null;
 
 // Profile fields
 let currentDisplayName = null;
@@ -63,6 +64,9 @@ export function setUnreadPrivate(value) { unreadPrivate = value; }
 export function setSendingGlobal(value) { sendingGlobal = value; }
 export function setSendingPrivate(value) { sendingPrivate = value; }
 export function setTimeFormat(value) { timeFormat = value; }
+
+export function getPendingAttachment() { return pendingAttachment; }
+export function setPendingAttachment(value) { pendingAttachment = value; }
 
 export function setCurrentDisplayName(value) { currentDisplayName = value; }
 export function setCurrentBio(value) { currentBio = value; }
@@ -181,6 +185,7 @@ export function getOldestBufferKey() { return privateMessagesBuffer.keys().next(
 export function clearMessageBuffer() { privateMessagesBuffer.clear(); }
 
 // Optimistic timeouts
+
 export function hasOptimisticTimeout(clientId) { return optimisticTimeouts.has(clientId); }
 export function getOptimisticTimeout(clientId) { return optimisticTimeouts.get(clientId); }
 export function setOptimisticTimeout(clientId, timeoutId) { optimisticTimeouts.set(clientId, timeoutId); }
@@ -221,4 +226,5 @@ export function resetAllState() {
   clearMessageBuffer();
   clearAllOptimisticTimeouts();
   Object.keys(jumpButtons).forEach(key => delete jumpButtons[key]);
+  pendingAttachment = null;
 }

@@ -104,7 +104,14 @@ export function initDom() {
     btnSaveProfile: document.getElementById("btn-save-profile"),
     btnCancelProfile: document.getElementById("btn-cancel-profile"),
     btnUploadAvatar: document.getElementById("btn-upload-avatar"),
-    avatarFileInput: document.getElementById("avatar-file-input")
+    avatarFileInput: document.getElementById("avatar-file-input"),
+    // File attachment elements
+    globalFileBtn: document.getElementById("global-file-btn"),
+    globalFileInput: document.getElementById("global-file-input"),
+    globalAttachPreview: document.getElementById("global-attachment-preview"),
+    privateFileBtn: document.getElementById("private-file-btn"),
+    privateFileInput: document.getElementById("private-file-input"),
+    privateAttachPreview: document.getElementById("private-attachment-preview")
   };
   return dom;
 }
@@ -157,6 +164,68 @@ export function toggleTimeFormat() {
   refreshVisibleMeta();
 }
 
+/**
+ * Render an attachment element inside a message bubble.
+ * @param {{type: string, filename: string, url: string, mimetype: string, size: number}} attachment
+ * @returns {HTMLElement}
+ */
+function renderAttachment(attachment) {
+  const container = document.createElement("div");
+  container.className = "attachment-container";
+
+  if (attachment.type === "image") {
+    const img = document.createElement("img");
+    img.className = "attachment-image";
+    img.src = attachment.url;
+    img.alt = attachment.filename || "Image attachment";
+    img.loading = "lazy";
+    // Click to open full size
+    img.addEventListener("click", () => window.open(attachment.url, "_blank"));
+    img.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        window.open(attachment.url, "_blank");
+      }
+    });
+    img.tabIndex = 0;
+    img.setAttribute("aria-label", "Open full size image");
+    container.appendChild(img);
+  } else if (attachment.type === "audio") {
+    const audio = document.createElement("audio");
+    audio.className = "attachment-audio";
+    audio.src = attachment.url;
+    audio.controls = true;
+    audio.preload = "metadata";
+    container.appendChild(audio);
+  } else if (attachment.type === "file") {
+    const link = document.createElement("a");
+    link.className = "attachment-file-link";
+    link.href = attachment.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    // File icon based on mimetype
+    const icon = getFileIcon(attachment.mimetype || "");
+    link.innerHTML = `<span class="file-icon">${icon}</span><span class="file-name">${attachment.filename || "Download"}</span>`;
+    container.appendChild(link);
+  }
+
+  return container;
+}
+
+/**
+ * Get a simple emoji icon for a file type.
+ */
+function getFileIcon(mimetype) {
+  if (mimetype.startsWith("image/")) return "🖼️";
+  if (mimetype.startsWith("audio/")) return "🎵";
+  if (mimetype.startsWith("video/")) return "🎬";
+  if (mimetype.includes("pdf")) return "📄";
+  if (mimetype.includes("word") || mimetype.includes("document")) return "📝";
+  if (mimetype.includes("zip") || mimetype.includes("compress")) return "📦";
+  if (mimetype.startsWith("text/")) return "📃";
+  return "📎";
+}
+
 export function appendMessage(containerId, sender, text, time, type, options = {}) {
   if (!sender || typeof text !== "string" || !time) return null;
   const container = containerId ? document.getElementById(containerId) : null;
@@ -182,9 +251,18 @@ export function appendMessage(containerId, sender, text, time, type, options = {
     bubble.appendChild(avatar);
   }
 
-  const textDiv = document.createElement("div");
-  textDiv.textContent = text;
-  bubble.appendChild(textDiv);
+  // Text content (may be empty for attachment-only messages)
+  if (text) {
+    const textDiv = document.createElement("div");
+    textDiv.textContent = text;
+    bubble.appendChild(textDiv);
+  }
+
+  // Render attachment if present
+  if (options.attachment) {
+    const attachEl = renderAttachment(options.attachment);
+    bubble.appendChild(attachEl);
+  }
 
   const copyBtn = document.createElement("button");
   copyBtn.className = "copy-btn";
@@ -473,9 +551,44 @@ export function resetChatUi() {
   utils.autoResize(dom.privateInput);
   updateCharCounter(dom.globalInput, dom.globalCounter, dom.sendGlobal);
   updateCharCounter(dom.privateInput, dom.privateCounter, dom.sendPrivate);
+  // Clear attachment previews
+  clearAttachmentPreview("global");
+  clearAttachmentPreview("private");
   switchTab("global");
   // Hide profile panel on logout
   if (dom.profilePanel) dom.profilePanel.classList.add("hidden");
+}
+
+/**
+ * Show a pending attachment preview in the input area.
+ * @param {'global'|'private'} channel
+ * @param {{type: string, filename: string, url?: string}} attachment
+ */
+export function showAttachmentPreview(channel, attachment) {
+  const previewEl = channel === "global" ? dom.globalAttachPreview : dom.privateAttachPreview;
+  if (!previewEl) return;
+  previewEl.classList.remove("hidden");
+  const icon = getFileIcon(attachment.type === "image" ? "image/" : attachment.type === "audio" ? "audio/" : "application/");
+  previewEl.innerHTML = `<span class="attach-preview-icon">${icon}</span><span class="attach-preview-filename">${attachment.filename}</span><button class="attach-preview-remove" type="button" aria-label="Remove attachment">&times;</button>`;
+}
+
+/**
+ * Clear the attachment preview and pending state.
+ * @param {'global'|'private'} channel
+ */
+export function clearAttachmentPreview(channel) {
+  const previewEl = channel === "global" ? dom.globalAttachPreview : dom.privateAttachPreview;
+  if (previewEl) {
+    previewEl.classList.add("hidden");
+    previewEl.innerHTML = "";
+  }
+  // Also clear pending attachment state
+  state.setPendingAttachment(null);
+  // Update send button state
+  const textarea = channel === "global" ? dom.globalInput : dom.privateInput;
+  const counter = channel === "global" ? dom.globalCounter : dom.privateCounter;
+  const sendBtn = channel === "global" ? dom.sendGlobal : dom.sendPrivate;
+  updateCharCounter(textarea, counter, sendBtn);
 }
 
 export function showAuthError(message, isSuccess = false) {

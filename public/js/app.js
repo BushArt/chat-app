@@ -10,6 +10,21 @@ import * as ui from './modules/ui.js';
 let dom;
 let selectedAvatarFile = null;
 
+// ---- File upload state per channel ----
+const pendingAttachments = { global: null, private: null };
+
+// Allowed MIME types for client-side pre-validation
+const ALLOWED_ATTACHMENT_TYPES = new Set([
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp',
+  'audio/webm', 'audio/mp4', 'audio/mpeg', 'audio/ogg', 'audio/wav',
+  'application/pdf', 'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/zip', 'application/x-zip-compressed',
+  'text/plain', 'text/csv',
+  'video/mp4', 'video/webm'
+]);
+const MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024; // 25 MB
+
 // ---- Auth functions ----
 async function register() {
   const username = dom.usernameInput.value.trim();
@@ -197,16 +212,81 @@ async function loadMorePrivate() {
   }
 }
 
+// ---- File upload helper ----
+function setupFilePicker(btn, fileInput, channel) {
+  btn.addEventListener("click", () => fileInput.click());
+
+  fileInput.addEventListener("change", async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    // Client-side pre-validation
+    if (!ALLOWED_ATTACHMENT_TYPES.has(file.type)) {
+      ui.appendSystem(channel === "global" ? "global-messages" : "private-messages",
+        `File type "${file.type}" is not supported.`);
+      fileInput.value = "";
+      return;
+    }
+    if (file.size > MAX_ATTACHMENT_SIZE) {
+      ui.appendSystem(channel === "global" ? "global-messages" : "private-messages",
+        `File exceeds the 25 MB size limit (${(file.size / 1024 / 1024).toFixed(1)} MB).`);
+      fileInput.value = "";
+      return;
+    }
+
+    // Show uploading state
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Uploading...";
+
+    try {
+      const room = channel === "global" ? null : state.getCurrentRoom();
+      const receiver = channel === "global" ? null : state.getCurrentRecipient();
+      const result = await api.uploadAttachment(file, room, receiver, channel === "global");
+      
+      // Store pending attachment
+      pendingAttachments[channel] = result;
+      state.setPendingAttachment(result);
+      
+      // Show preview in input area
+      ui.showAttachmentPreview(channel, result);
+      
+      // Re-enable send button
+      const sendBtn = channel === "global" ? dom.sendGlobal : dom.sendPrivate;
+      const textarea = channel === "global" ? dom.globalInput : dom.privateInput;
+      sendBtn.disabled = false;
+      
+    } catch (err) {
+      ui.appendSystem(channel === "global" ? "global-messages" : "private-messages",
+        "Upload failed: " + (err.message || "Unknown error"));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalText;
+      fileInput.value = "";
+    }
+  });
+}
+
+function clearPendingAttachment(channel) {
+  pendingAttachments[channel] = null;
+  state.setPendingAttachment(null);
+  ui.clearAttachmentPreview(channel);
+}
+
 // ---- Send message functions ----
 function sendGlobalMessage() {
   if (state.isSendingGlobal()) return;
   const text = dom.globalInput.value.trim();
-  if (!text || [...text].length > utils.MAX_LEN) return;
+  const attachment = pendingAttachments.global || state.getPendingAttachment();
+  if (!text && !attachment) return;
+  if (text && [...text].length > utils.MAX_LEN) return;
   state.setSendingGlobal(true);
 
-  const clientId = optimistic.addOptimisticMessage("global", text);
+  const clientId = optimistic.addOptimisticMessage("global", text, attachment);
   
-  socket.emitSendGlobalMessage({ sender: state.getCurrentUser(), message: text, clientId });
+  const payload = { sender: state.getCurrentUser(), message: text, clientId };
+  if (attachment) payload.attachment = attachment;
+  socket.emitSendGlobalMessage(payload);
   socket.emitStopTyping("global");
   
   // Timeout optimistic message after 31s if no response
@@ -224,6 +304,7 @@ function sendGlobalMessage() {
   }, utils.OPTIMISTIC_TIMEOUT);
   
   state.setOptimisticTimeout(clientId, timeoutId);
+  clearPendingAttachment("global");
   dom.globalInput.value = "";
   utils.autoResize(dom.globalInput);
   ui.updateCharCounter(dom.globalInput, dom.globalCounter, dom.sendGlobal);
@@ -232,22 +313,26 @@ function sendGlobalMessage() {
 function sendPrivateMessage() {
   if (state.isSendingPrivate()) return;
   const text = dom.privateInput.value.trim();
-  if (!text || [...text].length > utils.MAX_LEN) return;
+  const attachment = pendingAttachments.private || state.getPendingAttachment();
+  if (!text && !attachment) return;
+  if (text && [...text].length > utils.MAX_LEN) return;
   if (!state.getCurrentRoom()) {
     ui.appendSystem("private-messages", "Open a chat first.");
     return;
   }
   state.setSendingPrivate(true);
 
-  const clientId = optimistic.addOptimisticMessage("private", text);
+  const clientId = optimistic.addOptimisticMessage("private", text, attachment);
   
-  socket.emitSendPrivateMessage({
+  const payload = {
     sender: state.getCurrentUser(),
     receiver: state.getCurrentRecipient(),
     message: text,
     room: state.getCurrentRoom(),
     clientId
-  });
+  };
+  if (attachment) payload.attachment = attachment;
+  socket.emitSendPrivateMessage(payload);
   socket.emitStopTyping(state.getCurrentRoom());
   
   // Timeout optimistic message after 31s if no response
@@ -265,6 +350,7 @@ function sendPrivateMessage() {
   }, utils.OPTIMISTIC_TIMEOUT);
   
   state.setOptimisticTimeout(clientId, timeoutId);
+  clearPendingAttachment("private");
   dom.privateInput.value = "";
   utils.autoResize(dom.privateInput);
   ui.updateCharCounter(dom.privateInput, dom.privateCounter, dom.sendPrivate);
@@ -381,7 +467,22 @@ function init() {
   dom.btnSaveProfile.addEventListener("click", saveProfile);
   dom.btnCancelProfile.addEventListener("click", closeProfileEditor);
 
-  // File upload button wiring
+  // File attachment button wiring
+  setupFilePicker(dom.globalFileBtn, dom.globalFileInput, "global");
+  setupFilePicker(dom.privateFileBtn, dom.privateFileInput, "private");
+
+  // Remove attachment preview on X click (delegated)
+  document.addEventListener("click", (e) => {
+    if (e.target.classList.contains("attach-preview-remove")) {
+      const preview = e.target.closest(".attachment-preview");
+      if (preview) {
+        const channel = preview.id === "global-attachment-preview" ? "global" : "private";
+        clearPendingAttachment(channel);
+      }
+    }
+  });
+
+  // File upload button wiring (Profile avatar)
   dom.btnUploadAvatar.addEventListener("click", () => dom.avatarFileInput.click());
   dom.avatarFileInput.addEventListener("change", () => {
     const file = dom.avatarFileInput.files[0];

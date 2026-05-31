@@ -65,23 +65,55 @@ describe("privateMessage handler", () => {
   // -----------------------------------------------------------------------
   // Input validation — message fields
   // -----------------------------------------------------------------------
-  test("returns early when data.message is undefined", async () => {
+  test("returns early when data.message is undefined and no attachment", async () => {
     await handler({ receiver: "bob", room: "alice:bob", clientId: "abc" });
     expect(Message).not.toHaveBeenCalled();
   });
 
-  test("returns early when data.message is not a string", async () => {
+  test("returns early when data.message is not a string and no attachment", async () => {
     await handler({ message: 123, receiver: "bob", room: "alice:bob", clientId: "abc" });
     expect(Message).not.toHaveBeenCalled();
   });
 
-  test("returns early when data.message is empty", async () => {
+  test("returns early when data.message is empty and no attachment", async () => {
     await handler({ message: "", receiver: "bob", room: "alice:bob", clientId: "abc" });
     expect(Message).not.toHaveBeenCalled();
   });
 
   test("returns early when data.message exceeds MAX_MESSAGE_LENGTH", async () => {
     await handler({ message: "x".repeat(1001), receiver: "bob", room: "alice:bob", clientId: "abc" });
+    expect(Message).not.toHaveBeenCalled();
+  });
+
+  // -----------------------------------------------------------------------
+  // Input validation — attachment present (Phase 3)
+  // -----------------------------------------------------------------------
+  test("accepts attachment-only private message (empty message with valid attachment)", async () => {
+    const mockDoc = { save: jest.fn().mockResolvedValue(), sender: "alice", receiver: "bob", message: "", isGlobal: false, clientId: "c1", room: "alice:bob", createdAt: new Date() };
+    Message.mockImplementation(() => mockDoc);
+
+    const attachment = { type: "image", url: "https://res.cloudinary.com/test/img.png", filename: "photo.png", mimetype: "image/png", size: 204800 };
+    await handler({ message: "", receiver: "bob", room: "alice:bob", clientId: "c1", attachment });
+
+    expect(Message).toHaveBeenCalledWith(
+      expect.objectContaining({ attachment })
+    );
+  });
+
+  test("accepts private message with both text and attachment", async () => {
+    const mockDoc = { save: jest.fn().mockResolvedValue(), sender: "alice", receiver: "bob", message: "caption", isGlobal: false, clientId: "c1", room: "alice:bob", createdAt: new Date() };
+    Message.mockImplementation(() => mockDoc);
+
+    const attachment = { type: "file", url: "https://res.cloudinary.com/test/doc.pdf", filename: "doc.pdf", mimetype: "application/pdf", size: 50000 };
+    await handler({ message: "caption", receiver: "bob", room: "alice:bob", clientId: "c1", attachment });
+
+    expect(Message).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "caption", attachment })
+    );
+  });
+
+  test("rejects private message with invalid attachment type", async () => {
+    await handler({ message: "", receiver: "bob", room: "alice:bob", clientId: "c1", attachment: { type: "video", url: "https://example.com/file.mp4", size: 1000 } });
     expect(Message).not.toHaveBeenCalled();
   });
 
@@ -114,7 +146,7 @@ describe("privateMessage handler", () => {
   // -----------------------------------------------------------------------
   // Database write and broadcast
   // -----------------------------------------------------------------------
-  test("creates a Message document with isGlobal: false, correct receiver, and senderDisplayName", async () => {
+  test("creates a Message document with isGlobal: false, correct receiver, senderDisplayName, and attachment", async () => {
     const mockDoc = { save: jest.fn().mockResolvedValue(), sender: "alice", receiver: "bob", message: "hi", isGlobal: false, clientId: "c1", room: "alice:bob", createdAt: new Date() };
     Message.mockImplementation(() => mockDoc);
 
@@ -127,10 +159,11 @@ describe("privateMessage handler", () => {
       isGlobal: false,
       clientId: "c1",
       senderDisplayName: "Alice",
+      attachment: null,
     });
   });
 
-  test("emits receive_message to the specific room (not global)", async () => {
+  test("emits receive_message to the specific room (not global) with attachment field", async () => {
     const createdAt = new Date("2026-05-17T12:34:56Z");
     const mockDoc = { save: jest.fn().mockResolvedValue(), sender: "alice", receiver: "bob", message: "hello", isGlobal: false, clientId: "c1", room: "alice:bob", createdAt };
     Message.mockImplementation(() => mockDoc);
@@ -145,6 +178,26 @@ describe("privateMessage handler", () => {
       room: "alice:bob",
       clientId: "c1",
       senderDisplayName: "Alice",
+      attachment: null,
+    });
+  });
+
+  test("emits receive_message with attachment when present", async () => {
+    const createdAt = new Date("2026-05-17T12:34:56Z");
+    const mockDoc = { save: jest.fn().mockResolvedValue(), sender: "alice", receiver: "bob", message: "caption", isGlobal: false, clientId: "c1", room: "alice:bob", createdAt };
+    Message.mockImplementation(() => mockDoc);
+
+    const attachment = { type: "image", url: "https://res.cloudinary.com/test/img.png", filename: "photo.png", mimetype: "image/png", size: 204800 };
+    await handler({ message: "caption", receiver: "bob", room: "alice:bob", clientId: "c1", attachment });
+
+    expect(io.to("alice:bob").emit).toHaveBeenCalledWith("receive_message", {
+      sender: "alice",
+      message: "caption",
+      createdAt,
+      room: "alice:bob",
+      clientId: "c1",
+      senderDisplayName: "Alice",
+      attachment,
     });
   });
 

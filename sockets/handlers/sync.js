@@ -108,6 +108,7 @@ module.exports = function createSyncHandler(io, socket, state, messageAllowed) {
           clientId: doc.clientId,
           id: doc._id,
           room: expectedRoom,
+          attachment: doc.attachment || null,
         }));
 
         payloads.forEach((payload) => {
@@ -144,7 +145,7 @@ module.exports = function createSyncHandler(io, socket, state, messageAllowed) {
         docs = docs.reverse();
       }
 
-      const payloads = docs.map((doc) => ({ sender: doc.sender, message: doc.message, createdAt: doc.createdAt, clientId: doc.clientId, id: doc._id }));
+      const payloads = docs.map((doc) => ({ sender: doc.sender, message: doc.message, createdAt: doc.createdAt, clientId: doc.clientId, id: doc._id, attachment: doc.attachment || null }));
       payloads.forEach((payload) => {
         try { socket.emit('receive_global_message', payload); } catch (e) {
           logger.error({ event: 'emit_error', context: 'sync_global_emit', err: String(e), username });

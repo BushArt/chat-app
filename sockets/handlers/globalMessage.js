@@ -19,11 +19,24 @@ module.exports = function createGlobalMessageHandler(io, socket, state, messageA
     }
 
     const message = data?.message;
-    if (!message || typeof message !== 'string') return;
-    if ([...message.trim()].length === 0) return;
-    if ([...message].length > state.MAX_MESSAGE_LENGTH) return;
+    // Relaxed validation: at least one of `message` or `attachment.url` must be present
+    const hasAttachment = data?.attachment?.url && typeof data.attachment.url === 'string';
+    if (!message && !hasAttachment) return;
+    if (message && typeof message !== 'string') return;
+    if (message && [...message.trim()].length === 0 && !hasAttachment) return;
+    if (message && [...message].length > state.MAX_MESSAGE_LENGTH) return;
 
-    const sanitizedMessage = message.replace(/<[^>]*>/g, '');
+    // Validate attachment structure if present
+    let attachment = null;
+    if (data?.attachment) {
+      const { type, url, size } = data.attachment;
+      if (!['image', 'audio', 'file'].includes(type)) return;
+      if (typeof url !== 'string' || url.length === 0) return;
+      if (typeof size !== 'number' || size <= 0) return;
+      attachment = data.attachment;
+    }
+
+    const sanitizedMessage = message ? message.replace(/<[^>]*>/g, '') : '';
 
     const key = `${sender}:global`;
     clearTimeout(state.typingTimeouts.get(key));
@@ -47,7 +60,8 @@ module.exports = function createGlobalMessageHandler(io, socket, state, messageA
         message: sanitizedMessage.trim(),
         isGlobal: true,
         clientId: data.clientId,
-        senderDisplayName
+        senderDisplayName,
+        attachment
       });
       await newMessage.save();
 
@@ -56,7 +70,8 @@ module.exports = function createGlobalMessageHandler(io, socket, state, messageA
         message: sanitizedMessage.trim(),
         createdAt: newMessage.createdAt,
         clientId: newMessage.clientId,
-        senderDisplayName
+        senderDisplayName,
+        attachment
       };
 
       // Ack the sender if still connected

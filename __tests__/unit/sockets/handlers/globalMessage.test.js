@@ -73,24 +73,24 @@ describe("globalMessage handler", () => {
   });
 
   // -----------------------------------------------------------------------
-  // Input validation
+  // Input validation — message-only
   // -----------------------------------------------------------------------
-  test("returns early when data.message is undefined", async () => {
+  test("returns early when data.message is undefined and no attachment", async () => {
     await handler({ clientId: "abc" });
     expect(Message).not.toHaveBeenCalled();
   });
 
-  test("returns early when data.message is not a string", async () => {
+  test("returns early when data.message is not a string and no attachment", async () => {
     await handler({ message: 123, clientId: "abc" });
     expect(Message).not.toHaveBeenCalled();
   });
 
-  test("returns early when data.message is an empty string", async () => {
+  test("returns early when data.message is an empty string and no attachment", async () => {
     await handler({ message: "", clientId: "abc" });
     expect(Message).not.toHaveBeenCalled();
   });
 
-  test("returns early when data.message is only whitespace", async () => {
+  test("returns early when data.message is only whitespace and no attachment", async () => {
     await handler({ message: "   ", clientId: "abc" });
     expect(Message).not.toHaveBeenCalled();
   });
@@ -105,6 +105,48 @@ describe("globalMessage handler", () => {
     const emojiMsg = "😀".repeat(1001);
     await handler({ message: emojiMsg, clientId: "abc" });
     expect(Message).not.toHaveBeenCalled();
+  });
+
+  // -----------------------------------------------------------------------
+  // Input validation — attachment present (Phase 3)
+  // -----------------------------------------------------------------------
+  test("returns early when attachment is present but missing url", async () => {
+    await handler({ message: "", attachment: { type: "image", url: "" } });
+    expect(Message).not.toHaveBeenCalled();
+  });
+
+  test("returns early when attachment type is not in the allowed enum", async () => {
+    await handler({ message: "", attachment: { type: "video", url: "https://example.com/file.mp4", size: 1000 } });
+    expect(Message).not.toHaveBeenCalled();
+  });
+
+  test("returns early when attachment size is not a positive number", async () => {
+    await handler({ message: "", attachment: { type: "image", url: "https://example.com/img.png", size: -1 } });
+    expect(Message).not.toHaveBeenCalled();
+  });
+
+  test("accepts attachment-only message (empty message with valid attachment)", async () => {
+    const mockDoc = { save: jest.fn().mockResolvedValue(), sender: "alice", message: "", isGlobal: true, clientId: "abc", createdAt: new Date() };
+    Message.mockImplementation(() => mockDoc);
+
+    const attachment = { type: "image", url: "https://res.cloudinary.com/test/img.png", filename: "photo.png", mimetype: "image/png", size: 204800 };
+    await handler({ message: "", clientId: "abc", attachment });
+
+    expect(Message).toHaveBeenCalledWith(
+      expect.objectContaining({ attachment })
+    );
+  });
+
+  test("accepts message with both text and attachment", async () => {
+    const mockDoc = { save: jest.fn().mockResolvedValue(), sender: "alice", message: "caption", isGlobal: true, clientId: "abc", createdAt: new Date() };
+    Message.mockImplementation(() => mockDoc);
+
+    const attachment = { type: "file", url: "https://res.cloudinary.com/test/doc.pdf", filename: "doc.pdf", mimetype: "application/pdf", size: 50000 };
+    await handler({ message: "caption", clientId: "abc", attachment });
+
+    expect(Message).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "caption", attachment })
+    );
   });
 
   // -----------------------------------------------------------------------
@@ -171,7 +213,7 @@ describe("globalMessage handler", () => {
   // -----------------------------------------------------------------------
   // Database write and broadcast
   // -----------------------------------------------------------------------
-  test("creates a Message document with correct fields including senderDisplayName", async () => {
+  test("creates a Message document with correct fields including senderDisplayName and attachment", async () => {
     const mockDoc = { save: jest.fn().mockResolvedValue(), sender: "alice", message: "hello", isGlobal: true, clientId: "client-1", createdAt: new Date() };
     Message.mockImplementation(() => mockDoc);
 
@@ -183,6 +225,7 @@ describe("globalMessage handler", () => {
       isGlobal: true,
       clientId: "client-1",
       senderDisplayName: "Alice",
+      attachment: null,
     });
   });
 
@@ -194,7 +237,7 @@ describe("globalMessage handler", () => {
     expect(saveMock).toHaveBeenCalledTimes(1);
   });
 
-  test("broadcasts receive_global_message with senderDisplayName to the global room", async () => {
+  test("broadcasts receive_global_message with senderDisplayName and attachment to the global room", async () => {
     const createdAt = new Date("2026-05-17T12:34:56Z");
     const mockDoc = { save: jest.fn().mockResolvedValue(), sender: "alice", message: "hello", isGlobal: true, clientId: "client-1", createdAt };
     Message.mockImplementation(() => mockDoc);
@@ -208,6 +251,25 @@ describe("globalMessage handler", () => {
       createdAt,
       clientId: "client-1",
       senderDisplayName: "Alice",
+      attachment: null,
+    });
+  });
+
+  test("broadcasts receive_global_message with attachment when present", async () => {
+    const createdAt = new Date("2026-05-17T12:34:56Z");
+    const mockDoc = { save: jest.fn().mockResolvedValue(), sender: "alice", message: "caption", isGlobal: true, clientId: "c1", createdAt };
+    Message.mockImplementation(() => mockDoc);
+
+    const attachment = { type: "image", url: "https://res.cloudinary.com/test/img.png", filename: "photo.png", mimetype: "image/png", size: 204800 };
+    await handler({ message: "caption", clientId: "c1", attachment });
+
+    expect(io.to("global").emit).toHaveBeenCalledWith("receive_global_message", {
+      sender: "alice",
+      message: "caption",
+      createdAt,
+      clientId: "c1",
+      senderDisplayName: "Alice",
+      attachment,
     });
   });
 

@@ -20,7 +20,7 @@ const hasSocketIoClient = typeof io === "function";
 
 // ---- Socket Event Listeners ----
 socket.on("receive_global_message", (data) => {
-  if (!data || typeof data.message !== "string") return;
+  if (!data || (typeof data.message !== "string" && !data.attachment?.url)) return;
   const type = data.sender === state.getCurrentUser() ? "sent" : "received";
   
   // ✅ FINAL FAILSAFE: Always cancel timeout for our messages - NO EXCEPTIONS
@@ -28,7 +28,7 @@ socket.on("receive_global_message", (data) => {
     state.deleteOptimisticTimeout(data.clientId);
   }
   if (!(type === "sent" && optimistic.resolveOptimistic("global", data))) {
-    ui.appendMessage("global-messages", data.sender, data.message, data.createdAt || new Date().toISOString(), type);
+    ui.appendMessage("global-messages", data.sender, data.message || "", data.createdAt || new Date().toISOString(), type, { attachment: data.attachment });
   }
 
   if (data.sender === state.getCurrentUser()) {
@@ -44,7 +44,7 @@ socket.on("receive_global_message", (data) => {
 });
 
 socket.on("receive_message", (data) => {
-  if (!data || typeof data.message !== "string") return;
+  if (!data || (typeof data.message !== "string" && !data.attachment?.url)) return;
   const type = data.sender === state.getCurrentUser() ? "sent" : "received";
   
   // ✅ FINAL FAILSAFE: Always cancel timeout for our messages - NO EXCEPTIONS
@@ -53,12 +53,12 @@ socket.on("receive_message", (data) => {
   }
   if (data.room === state.getCurrentRoom()) {
     if (!(type === "sent" && optimistic.resolveOptimistic("private", data))) {
-      ui.appendMessage("private-messages", data.sender, data.message, data.createdAt || new Date().toISOString(), type);
+      ui.appendMessage("private-messages", data.sender, data.message || "", data.createdAt || new Date().toISOString(), type, { attachment: data.attachment });
     }
+  } else {
     if (data.sender === state.getCurrentUser()) {
       state.setSendingPrivate(false);
     }
-  } else {
     // Buffer message for later with true LRU eviction
     if (state.hasBufferedMessages(data.room)) {
       state.touchBufferEntry(data.room);

@@ -7,9 +7,13 @@ const errorHandler = require("../../../middleware/errorHandler");
 // ── Mocks ──────────────────────────────────────────────────────────────
 jest.mock("../../../models/Message");
 jest.mock("jsonwebtoken");
+jest.mock("../../../config/cloudinary", () => ({
+  uploadToCloudinary: jest.fn()
+}));
 
 const Message = require("../../../models/Message");
 const jwt = require("jsonwebtoken");
+const { uploadToCloudinary } = require("../../../config/cloudinary");
 
 const messageRoutes = require("../../../routes/messages");
 
@@ -255,6 +259,175 @@ describe("GET /messages/global", () => {
     expect(res.status).toBe(500);
     expect(res.body).toHaveProperty("error");
     expect(res.body.code).toBe("global_messages_fetch_failed");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// POST /messages/upload
+// ─────────────────────────────────────────────────────────────────────
+describe("POST /messages/upload", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Default: Cloudinary succeeds
+    uploadToCloudinary.mockResolvedValue({
+      secure_url: "https://res.cloudinary.com/test/chat-app/attachments/uuid-123",
+      public_id: "chat-app/attachments/uuid-123"
+    });
+  });
+
+  // ── Authentication ──────────────────────────────────────────────
+  test("returns 401 without JWT", async () => {
+    const app = createApp();
+    const res = await request(app).post("/messages/upload");
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe("authentication_required");
+  });
+
+  // ── File validation ─────────────────────────────────────────────
+  test("returns 400 when no file is attached", async () => {
+    jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
+
+    const app = createApp();
+    const res = await request(app)
+      .post("/messages/upload")
+      .field("room", "global")
+      .field("isGlobal", "true")
+      .set("Authorization", "Bearer valid-token");
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("no_file");
+  });
+
+  test("returns 400 when room is missing", async () => {
+    jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
+
+    const app = createApp();
+    const res = await request(app)
+      .post("/messages/upload")
+      .attach("file", Buffer.from("fake-image"), { filename: "test.png", contentType: "image/png" })
+      .set("Authorization", "Bearer valid-token");
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("room_required");
+  });
+
+  // ── Authorization ───────────────────────────────────────────────
+  test("returns 403 when user is not the receiver in a private upload", async () => {
+    jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
+
+    const app = createApp();
+    const res = await request(app)
+      .post("/messages/upload")
+      .field("room", "alice:bob")
+      .field("receiver", "carol")
+      .field("isGlobal", "false")
+      .attach("file", Buffer.from("fake-image"), { filename: "test.png", contentType: "image/png" })
+      .set("Authorization", "Bearer valid-token");
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe("forbidden_upload");
+  });
+
+  test("allows upload when user is the receiver", async () => {
+    jwt.verify.mockReturnValue({ id: "u1", username: "bob" });
+
+    const app = createApp();
+    const res = await request(app)
+      .post("/messages/upload")
+      .field("room", "alice:bob")
+      .field("receiver", "bob")
+      .field("isGlobal", "false")
+      .attach("file", Buffer.from("fake-image"), { filename: "test.png", contentType: "image/png" })
+      .set("Authorization", "Bearer valid-token");
+    expect(res.status).toBe(200);
+  });
+
+  // ── Success ─────────────────────────────────────────────────────
+  test("returns 200 with attachment metadata on successful upload", async () => {
+    jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
+
+    const app = createApp();
+    const res = await request(app)
+      .post("/messages/upload")
+      .field("room", "global")
+      .field("isGlobal", "true")
+      .attach("file", Buffer.from("fake-image-bytes"), { filename: "screenshot.png", contentType: "image/png" })
+      .set("Authorization", "Bearer valid-token");
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("type");
+    expect(res.body).toHaveProperty("filename");
+    expect(res.body).toHaveProperty("url");
+    expect(res.body).toHaveProperty("mimetype");
+    expect(res.body).toHaveProperty("size");
+    expect(res.body.type).toBe("image");
+    expect(res.body.filename).toBe("screenshot.png");
+    expect(res.body.mimetype).toBe("image/png");
+    expect(res.body.url).toBe("https://res.cloudinary.com/test/chat-app/attachments/uuid-123");
+    expect(typeof res.body.size).toBe("number");
+  });
+
+  test("classifies audio mime type as 'audio'", async () => {
+    jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
+
+    const app = createApp();
+    const res = await request(app)
+      .post("/messages/upload")
+      .field("room", "global")
+      .field("isGlobal", "true")
+      .attach("file", Buffer.from("fake-audio"), { filename: "voice.webm", contentType: "audio/webm" })
+      .set("Authorization", "Bearer valid-token");
+
+    expect(res.status).toBe(200);
+    expect(res.body.type).toBe("audio");
+  });
+
+  test("classifies pdf mime type as 'file'", async () => {
+    jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
+
+    const app = createApp();
+    const res = await request(app)
+      .post("/messages/upload")
+      .field("room", "global")
+      .field("isGlobal", "true")
+      .attach("file", Buffer.from("fake-pdf"), { filename: "doc.pdf", contentType: "application/pdf" })
+      .set("Authorization", "Bearer valid-token");
+
+    expect(res.status).toBe(200);
+    expect(res.body.type).toBe("file");
+  });
+
+  // ── Error handling ──────────────────────────────────────────────
+  test("returns 500 when Cloudinary upload fails", async () => {
+    uploadToCloudinary.mockRejectedValue(new Error("Cloudinary error"));
+
+    jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
+
+    const app = createApp();
+    const res = await request(app)
+      .post("/messages/upload")
+      .field("room", "global")
+      .field("isGlobal", "true")
+      .attach("file", Buffer.from("fake-image"), { filename: "test.png", contentType: "image/png" })
+      .set("Authorization", "Bearer valid-token");
+
+    expect(res.status).toBe(500);
+    expect(res.body.code).toBe("upload_failed");
+  });
+
+  test("responds with multer error when file exceeds size limit", async () => {
+    jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
+
+    const app = createApp();
+    // Use a buffer larger than 25 MB (attachmentUpload limit)
+    const largeBuffer = Buffer.alloc(26 * 1024 * 1024);
+    const res = await request(app)
+      .post("/messages/upload")
+      .field("room", "global")
+      .field("isGlobal", "true")
+      .attach("file", largeBuffer, { filename: "huge.mp4", contentType: "video/mp4" })
+      .set("Authorization", "Bearer valid-token");
+
+    expect(res.status).toBe(400);
+    // Multer returns HTTP 400 with { error, code } for file too large
+    expect(res.body).toHaveProperty("error");
   });
 });
 

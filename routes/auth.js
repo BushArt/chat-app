@@ -7,6 +7,7 @@ const rateLimit = require('express-rate-limit');
 const User = require('../models/User');
 const HttpError = require('../utils/HttpError');
 const cloudinary = require('../config/cloudinary');
+const { uploadToCloudinary } = require('../config/cloudinary');
 const { avatarUpload } = require('../middleware/upload');
 
 const isTestEnvironment = process.env.NODE_ENV === 'test';
@@ -123,22 +124,6 @@ function buildProfile(user) {
     avatarUrl: user.avatarUrl || null,
     createdAt: user.createdAt
   };
-}
-
-// ─────────────────────────────────────────
-// Cloudinary upload helper (promisified)
-// ─────────────────────────────────────────
-function uploadToCloudinary(buffer, options) {
-  return new Promise((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(
-      options,
-      (error, result) => {
-        if (error) reject(error);
-        else resolve(result);
-      }
-    );
-    stream.end(buffer);
-  });
 }
 
 // ─────────────────────────────────────────

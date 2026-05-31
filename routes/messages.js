@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const makeRateLimiter = require('../middleware/rateLimiter');
 const HttpError = require('../utils/HttpError');
+const crypto = require('crypto');
 
 const isTestEnvironment = process.env.NODE_ENV === 'test';
 
@@ -83,6 +84,117 @@ async function fetchPaginated(findFilter, limit, before) {
 
   return { messages: chronological, hasMore, cursor };
 }
+
+// ─────────────────────────────────────────
+// Upload rate limiter: 20 requests per 15 minutes per IP
+// ─────────────────────────────────────────
+function uploadRateLimitMiddleware(req, res, next) {
+  if (isTestEnvironment) return next();
+  try {
+    if (!req.app.locals._uploadRateLimiters) {
+      req.app.locals._uploadRateLimiters = new Map();
+      setInterval(() => {
+        req.app.locals._uploadRateLimiters.clear();
+      }, 15 * 60 * 1000).unref();
+    }
+    const ip = req.ip || req.connection.remoteAddress || 'anonymous';
+    const map = req.app.locals._uploadRateLimiters;
+    if (!map.has(ip)) map.set(ip, makeRateLimiter(20, 15 * 60 * 1000));
+    const limiter = map.get(ip);
+    if (!limiter()) return next(new HttpError('Too many upload requests', 429, 'upload_rate_limited'));
+    return next();
+  } catch (err) {
+    return next();
+  }
+}
+
+// ─────────────────────────────────────────
+// Classify MIME type into attachment type
+// ─────────────────────────────────────────
+function classifyAttachmentType(mimetype) {
+  if (mimetype.startsWith('image/')) return 'image';
+  if (mimetype.startsWith('audio/')) return 'audio';
+  return 'file';
+}
+
+// ─────────────────────────────────────────
+// POST /messages/upload
+// Upload a file and return attachment metadata.
+// ─────────────────────────────────────────
+const { uploadToCloudinary } = require('../config/cloudinary');
+const { attachmentUpload } = require('../middleware/upload');
+const logger = require('../utils/logger');
+
+router.post('/upload', verifyToken, uploadRateLimitMiddleware, attachmentUpload.single('file'), async (req, res, next) => {
+  try {
+    // 1. Validate file present
+    if (!req.file) {
+      return next(new HttpError('No file provided.', 400, 'no_file'));
+    }
+
+    // 2. Parse form fields
+    const { room, receiver, isGlobal } = req.body;
+
+    if (!room) {
+      return next(new HttpError('Room is required.', 400, 'room_required'));
+    }
+
+    // 3. Authorization check for private messages
+    if (isGlobal !== 'true') {
+      if (!receiver) {
+        return next(new HttpError('Receiver is required for private messages.', 400, 'receiver_required'));
+      }
+      if (req.user.username !== receiver) {
+        return next(new HttpError('Forbidden', 403, 'forbidden_upload'));
+      }
+    }
+
+    logger.info({
+      event: 'upload_start',
+      username: req.user.username,
+      filename: req.file.originalname,
+      size: req.file.size,
+      mimetype: req.file.mimetype
+    });
+
+    // 4. Generate safe public ID
+    const publicId = `chat-app/attachments/${crypto.randomUUID()}`;
+
+    // 5. Upload to Cloudinary
+    let result;
+    try {
+      result = await uploadToCloudinary(req.file.buffer, {
+        public_id: publicId,
+        resource_type: 'auto'
+      });
+    } catch (cloudinaryErr) {
+      logger.error({ event: 'upload_failure', username: req.user.username, error: String(cloudinaryErr), mimetype: req.file.mimetype });
+      return next(new HttpError('Failed to upload file.', 500, 'upload_failed'));
+    }
+
+    logger.info({
+      event: 'upload_success',
+      username: req.user.username,
+      cloudinary_public_id: result.public_id,
+      duration_ms: 0 // Cloudinary SDK does not expose upload duration; left as 0
+    });
+
+    // 6. Build and return attachment metadata
+    const attachment = {
+      type: classifyAttachmentType(req.file.mimetype),
+      filename: req.file.originalname,
+      url: result.secure_url,
+      mimetype: req.file.mimetype,
+      size: req.file.size
+    };
+
+    res.json(attachment);
+  } catch (err) {
+    if (err instanceof HttpError) return next(err);
+    logger.error({ event: 'upload_error', err: String(err) });
+    next(new HttpError('Server error during upload.', 500, 'upload_error'));
+  }
+});
 
 router.get('/global', rateLimitMiddleware, verifyToken, async (req, res, next) => {
   try {

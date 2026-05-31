@@ -1,7 +1,9 @@
 const RATE_LIMIT_MAX      = 10;  // messages
 const RATE_LIMIT_WINDOW   = 5000; // ms
 
-function makeRateLimiter() {
+function makeRateLimiter(max, windowMs) {
+  const limit = max || RATE_LIMIT_MAX;
+  const window = windowMs || RATE_LIMIT_WINDOW;
   let count = 0;
   let resetTimer = null;
   
@@ -10,11 +12,11 @@ function makeRateLimiter() {
       resetTimer = setTimeout(() => {
         count = 0;
         resetTimer = null;
-      }, RATE_LIMIT_WINDOW);
+      }, window);
     }
     // Increment then compare (atomic-style within this event loop)
     count++;
-    return count <= RATE_LIMIT_MAX;
+    return count <= limit;
   };
   
   isAllowed.cleanup = function() {

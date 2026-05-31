@@ -1,5 +1,16 @@
 const mongoose = require('mongoose');
 
+// Attachment subdocument schema (Phase 3 — File Attachments)
+// _id: false — attachments are always accessed through their parent Message,
+// so a separate _id would consume index space with no query benefit.
+const attachmentSchema = new mongoose.Schema({
+  type: { type: String, enum: ['image', 'audio', 'file'] },
+  filename: String,
+  url: String,
+  mimetype: String,
+  size: Number // bytes
+}, { _id: false });
+
 const messageSchema = new mongoose.Schema({
   sender: {
     type: String,
@@ -24,6 +35,10 @@ const messageSchema = new mongoose.Schema({
   senderDisplayName: {
     type: String,
     default: ''
+  },
+  attachment: {
+    type: attachmentSchema,
+    default: null
   }
 }, {
   timestamps: true

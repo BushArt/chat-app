@@ -339,6 +339,51 @@ describe("Socket.IO integration", () => {
       await new Promise((r) => setTimeout(r, 200));
     });
 
+    test("message with valid attachment includes attachment in receive_global_message", async () => {
+      const clientA = track(await connectAndWait(port, "valid-jwt"));
+      const clientB = track(await connectAndWait(port, "valid-jwt"));
+      await new Promise((r) => setTimeout(r, 100));
+
+      const msgPromise = waitForEvent(clientB, "receive_global_message");
+
+      const attachment = { type: "image", url: "https://res.cloudinary.com/test/img.png", filename: "photo.png", mimetype: "image/png", size: 204800 };
+      clientA.emit("send_global_message", { message: "with attachment", clientId: "c3", attachment });
+      const received = await msgPromise;
+
+      expect(received).toHaveProperty("sender", "alice");
+      expect(received).toHaveProperty("message", "with attachment");
+      expect(received).toHaveProperty("attachment");
+      expect(received.attachment).toMatchObject(attachment);
+    });
+
+    test("text-only message (no attachment) is unaffected — attachment is null", async () => {
+      const clientA = track(await connectAndWait(port, "valid-jwt"));
+      const clientB = track(await connectAndWait(port, "valid-jwt"));
+      await new Promise((r) => setTimeout(r, 100));
+
+      const msgPromise = waitForEvent(clientB, "receive_global_message");
+
+      clientA.emit("send_global_message", { message: "just text", clientId: "c4" });
+      const received = await msgPromise;
+
+      expect(received).toHaveProperty("message", "just text");
+      expect(received).toHaveProperty("attachment", null);
+    });
+
+    test("payload with neither message nor attachment does not broadcast", async () => {
+      const clientA = track(await connectAndWait(port, "valid-jwt"));
+      const clientB = track(await connectAndWait(port, "valid-jwt"));
+      await new Promise((r) => setTimeout(r, 100));
+
+      let broadcastCount = 0;
+      clientB.on("receive_global_message", () => { broadcastCount++; });
+
+      clientA.emit("send_global_message", { clientId: "c5" });
+      await new Promise((r) => setTimeout(r, 300));
+
+      expect(broadcastCount).toBe(0);
+    });
+
     test("sync: reconnecting client receives missed global messages and ack", async () => {
       // Prepare messages created after lastSeenAt
       const lastSeenAt = new Date('2026-05-01T00:00:00Z');

@@ -30,9 +30,9 @@ const authLimiter = isTestEnvironment
   message: { error: 'Too many attempts, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
-  handler: (req, res, next, options) => {
+  handler: (req, res, options) => {
     logger.warn({ event: 'rate_limit', ip: req.ip, path: req.path });
-    next(new HttpError(options.message.error, options.statusCode, 'rate_limited'));
+    res.status(options.statusCode).json({ error: options.message.error, code: 'rate_limited' });
   }
 });
 
@@ -45,9 +45,9 @@ const profileLimiter = isTestEnvironment
   message: { error: 'Too many profile updates, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
-  handler: (req, res, next, options) => {
+  handler: (req, res, options) => {
     logger.warn({ event: 'rate_limit_profile', ip: req.ip });
-    next(new HttpError(options.message.error, options.statusCode, 'rate_limited'));
+    res.status(options.statusCode).json({ error: options.message.error, code: 'rate_limited' });
   }
 });
 

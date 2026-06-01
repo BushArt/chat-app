@@ -63,11 +63,10 @@ const userSchema = new mongoose.Schema({
 });
 
 // Pre-save hook: set displayName to username if not provided
-userSchema.pre('save', function (next) {
+userSchema.pre('save', async function () {
   if (!this.displayName || this.displayName === '') {
     this.displayName = this.username;
   }
-  next();
 });
 
 module.exports = mongoose.model('User', userSchema);

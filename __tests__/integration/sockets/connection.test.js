@@ -1,26 +1,39 @@
 const http = require("http");
+const express = require("express");
+const cors = require("cors");
+const request = require("supertest");
 const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
 const state = require("../../../sockets/state");
+const securityHeaders = require("../../../middleware/security");
+const errorHandler = require("../../../middleware/errorHandler");
 const {
   waitForEvent,
-  connectClient,
   connectAndWait,
   resetJwtVerifyDefault,
   closeSocketServer,
 } = require("./socketTestHelpers");
 
-// Mock User model for JWT revocation checks and getOnlineList
-jest.mock("../../../models/User", () => ({
-  findById: jest.fn(),
-  find: jest.fn(),
-  updateOne: jest.fn().mockResolvedValue(),
-  findByIdAndUpdate: jest.fn(),
+jest.mock("express-rate-limit", () => () => (req, res, next) => next());
+jest.mock("bcryptjs");
+jest.mock("jsonwebtoken");
+jest.mock("cloudinary", () => ({
+  v2: { config: jest.fn(), uploader: { upload_stream: jest.fn() } },
 }));
 
-jest.mock("jsonwebtoken");
+jest.mock("../../../models/User", () => {
+  function MockUser(data) {
+    if (data) Object.assign(this, data);
+  }
+  MockUser.prototype.save = jest.fn().mockResolvedValue();
+  MockUser.findOne = jest.fn();
+  MockUser.findById = jest.fn();
+  MockUser.findByIdAndUpdate = jest.fn();
+  MockUser.updateOne = jest.fn().mockResolvedValue();
+  MockUser.find = jest.fn();
+  return MockUser;
+});
 
-// Mock the rate limiter factory
 jest.mock("../../../middleware/rateLimiter", () => {
   return jest.fn(() => {
     const limiter = jest.fn().mockReturnValue(true);
@@ -29,36 +42,69 @@ jest.mock("../../../middleware/rateLimiter", () => {
   });
 });
 
-const Message = require("../../../models/Message");
+const User = require("../../../models/User");
+const authRoutes = require("../../../routes/auth");
 
-jest.mock("../../../models/Message", () => {
-  const mockDocument = {
-    sender: "alice",
-    receiver: null,
-    message: "hello",
-    isGlobal: true,
-    clientId: "c1",
-    createdAt: new Date("2026-05-17T12:00:00Z"),
-    save: jest.fn().mockResolvedValue(),
-  };
-  return jest.fn(() => ({ ...mockDocument, save: jest.fn().mockResolvedValue() }));
-});
-
-function createSocketServer() {
-  const server = http.createServer();
-  const io = new Server(server, { transports: ["websocket"] });
-  require("../../../sockets")(io);
-  return { server, io };
+function mockFindByIdReturns(userObj) {
+  User.findById.mockReturnValue({
+    select: () => ({ lean: () => Promise.resolve(userObj) }),
+  });
 }
 
-describe("Socket.IO connection – Phase 1 profile fields", () => {
-  let server, io, port;
+function mockFindByIdAndUpdateReturns(userObj) {
+  User.findByIdAndUpdate.mockReturnValue({
+    select: () => Promise.resolve(userObj),
+  });
+}
+
+function mockFindReturns(users) {
+  User.find.mockReturnValue({
+    select: () => ({
+      lean: () => Promise.resolve(users),
+    }),
+  });
+}
+
+function createCombinedServer() {
+  const app = express();
+  app.use(cors({ origin: "*" }));
+  app.use(express.json({ limit: "100kb" }));
+  app.use(securityHeaders);
+  app.use("/auth", authRoutes);
+  app.use(errorHandler);
+
+  const server = http.createServer(app);
+  const io = new Server(server, { transports: ["websocket"] });
+  app.set("io", io);
+  require("../../../sockets")(io);
+
+  return { app, server, io };
+}
+
+describe("Socket.IO connection – profile broadcast via PUT /auth/profile", () => {
+  let app, server, io, port;
+  let clients = [];
+
+  const mockUser = {
+    _id: "user1",
+    username: "alice",
+    displayName: "Alice",
+    bio: "",
+    status: "online",
+    avatarUrl: null,
+    lastLogout: null,
+  };
 
   beforeAll(async () => {
     process.env.JWT_SECRET = "test-secret";
-    jwt.verify.mockReturnValue({ id: "user1", username: "alice" });
+    jwt.verify.mockReturnValue({
+      id: "user1",
+      username: "alice",
+      iat: Math.floor(Date.now() / 1000),
+      loginAt: Date.now(),
+    });
 
-    ({ server, io } = createSocketServer());
+    ({ app, server, io } = createCombinedServer());
     await new Promise((resolve) => {
       server.listen(0, () => {
         port = server.address().port;
@@ -71,35 +117,38 @@ describe("Socket.IO connection – Phase 1 profile fields", () => {
     await closeSocketServer(io, server);
   });
 
-  let clients = [];
-
   beforeEach(() => {
     state.onlineUsers.clear();
     state.typingTimeouts.clear();
     clients = [];
     resetJwtVerifyDefault(jwt);
-    Message.mockClear();
-
-    const User = require("../../../models/User");
-    User.findById.mockReset();
-    User.findById.mockReturnValue({
-      select: jest.fn(() => ({
-        lean: jest.fn().mockResolvedValue({ lastLogout: null })
-      }))
+    jwt.verify.mockReturnValue({
+      id: "user1",
+      username: "alice",
+      iat: Math.floor(Date.now() / 1000),
+      loginAt: Date.now(),
     });
+    mockFindByIdReturns(mockUser);
 
     User.find.mockReset();
-    User.find.mockResolvedValue([
+    mockFindReturns([
       { username: "alice", displayName: "Alice", status: "online" },
     ]);
+    User.updateOne.mockReset();
+    User.updateOne.mockResolvedValue(undefined);
   });
 
   afterEach(async () => {
-    await Promise.all(clients.map((c) => new Promise((resolve) => {
-      c.removeAllListeners();
-      c.close();
-      setTimeout(resolve, 0);
-    })));
+    await Promise.all(
+      clients.map(
+        (c) =>
+          new Promise((resolve) => {
+            c.removeAllListeners();
+            c.close();
+            setTimeout(resolve, 0);
+          })
+      )
+    );
   });
 
   function track(client) {
@@ -107,60 +156,59 @@ describe("Socket.IO connection – Phase 1 profile fields", () => {
     return client;
   }
 
-  // -------------------------------------------------------------------
-  // Phase 1: online_users format
-  // -------------------------------------------------------------------
-  test("online_users payload after Phase 1 is an array of objects with username, displayName, status", async () => {
+  test("online_users payload is an array of objects with username, displayName, status", async () => {
     const client = track(await connectAndWait(port, "valid-jwt"));
-
     const online = await waitForEvent(client, "online_users");
     expect(Array.isArray(online)).toBe(true);
     expect(online.length).toBeGreaterThan(0);
-
-    // Each entry should be an object (not a string)
-    const aliceEntry = online.find((e) => e && (typeof e === "object" ? e.username === "alice" : e === "alice"));
+    const aliceEntry = online.find((e) => e && e.username === "alice");
     expect(aliceEntry).toBeDefined();
-
-    if (typeof aliceEntry === "object") {
-      expect(aliceEntry).toHaveProperty("username", "alice");
-      expect(aliceEntry).toHaveProperty("displayName");
-      expect(aliceEntry).toHaveProperty("status");
-    }
+    expect(aliceEntry).toHaveProperty("displayName");
+    expect(aliceEntry).toHaveProperty("status");
   });
 
-  // -------------------------------------------------------------------
-  // Phase 1: after PUT /auth/profile, connected clients receive profile_updated
-  // -------------------------------------------------------------------
-  test("after PUT /auth/profile, connected clients receive profile_updated", async () => {
+  test("PUT /auth/profile broadcasts profile_updated to connected clients", async () => {
     const client = track(await connectAndWait(port, "valid-jwt"));
-
-    // Set up listener before the update
     const profilePromise = waitForEvent(client, "profile_updated");
 
-    // Simulate a profile update by emitting directly on the io server
-    // This mirrors what PUT /auth/profile does: io.emit('profile_updated', ...)
-    io.emit("profile_updated", {
+    const updatedUser = {
+      ...mockUser,
+      displayName: "Alice Updated",
+      status: "busy",
+    };
+    mockFindByIdAndUpdateReturns(updatedUser);
+
+    const res = await request(app)
+      .put("/auth/profile")
+      .set("Authorization", "Bearer valid-jwt")
+      .send({ displayName: "Alice Updated", status: "busy" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.displayName).toBe("Alice Updated");
+
+    const data = await profilePromise;
+    expect(data).toEqual({
       username: "alice",
       displayName: "Alice Updated",
       status: "busy",
+      avatarUrl: null,
     });
-
-    const data = await profilePromise;
-    expect(data).toHaveProperty("username", "alice");
-    expect(data).toHaveProperty("displayName", "Alice Updated");
-    expect(data).toHaveProperty("status", "busy");
   });
 
   test("profile_updated event does not include sensitive fields", async () => {
     const client = track(await connectAndWait(port, "valid-jwt"));
-
     const profilePromise = waitForEvent(client, "profile_updated");
 
-    io.emit("profile_updated", {
-      username: "bob",
-      displayName: "Bob",
+    mockFindByIdAndUpdateReturns({
+      ...mockUser,
+      displayName: "Alice Safe",
       status: "away",
     });
+
+    await request(app)
+      .put("/auth/profile")
+      .set("Authorization", "Bearer valid-jwt")
+      .send({ displayName: "Alice Safe", status: "away" });
 
     const data = await profilePromise;
     expect(data).not.toHaveProperty("password");

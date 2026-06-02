@@ -1,9 +1,26 @@
-const User = require("../../../models/User");
+const mongoose = require('mongoose');
+const { MongoMemoryServer } = require('mongodb-memory-server');
 
-describe("User schema", () => {
-  describe("field validations", () => {
-    test("username is required", async () => {
-      const user = new User({ password: "password123" });
+let mongoServer;
+
+beforeAll(async () => {
+  mongoServer = await MongoMemoryServer.create();
+  await mongoose.connect(mongoServer.getUri());
+});
+
+afterAll(async () => {
+  await mongoose.disconnect();
+  if (mongoServer) {
+    await mongoServer.stop();
+  }
+});
+
+const User = require('../../../models/User');
+
+describe('User schema', () => {
+  describe('field validations', () => {
+    test('username is required', async () => {
+      const user = new User({ password: 'password123' });
       let err;
       try {
         await user.validate();
@@ -12,11 +29,11 @@ describe("User schema", () => {
       }
       expect(err).toBeDefined();
       expect(err.errors.username).toBeDefined();
-      expect(err.errors.username.kind).toBe("required");
+      expect(err.errors.username.kind).toBe('required');
     });
 
-    test("password is required", async () => {
-      const user = new User({ username: "alice" });
+    test('password is required', async () => {
+      const user = new User({ username: 'alice' });
       let err;
       try {
         await user.validate();
@@ -25,16 +42,16 @@ describe("User schema", () => {
       }
       expect(err).toBeDefined();
       expect(err.errors.password).toBeDefined();
-      expect(err.errors.password.kind).toBe("required");
+      expect(err.errors.password.kind).toBe('required');
     });
 
-    test("username is trimmed", () => {
-      const user = new User({ username: "  alice  ", password: "password123" });
-      expect(user.username).toBe("alice");
+    test('username is trimmed', () => {
+      const user = new User({ username: '  alice  ', password: 'password123' });
+      expect(user.username).toBe('alice');
     });
 
-    test("validates successfully with all required fields", async () => {
-      const user = new User({ username: "alice", password: "password123" });
+    test('validates successfully with all required fields', async () => {
+      const user = new User({ username: 'alice', password: 'password123' });
       let err;
       try {
         await user.validate();
@@ -45,31 +62,28 @@ describe("User schema", () => {
     });
   });
 
-  describe("schema options", () => {
-    test("timestamps are enabled", () => {
-      const user = new User({ username: "bob", password: "pass" });
+  describe('schema options', () => {
+    test('timestamps are enabled', () => {
+      const user = new User({ username: 'bob', password: 'pass' });
       expect(user.schema.options.timestamps).toBe(true);
     });
 
-    test("username has a unique index", () => {
-      const user = new User({ username: "alice", password: "pass" });
-      expect(user.schema.path("username").options.unique).toBe(true);
+    test('username has a unique index', () => {
+      const user = new User({ username: 'alice', password: 'pass' });
+      expect(user.schema.path('username').options.unique).toBe(true);
     });
   });
 
-  describe("profile fields", () => {
-    test("displayName defaults to username on save", async () => {
-      const user = new User({ username: "alice", password: "pass" });
-      expect(user.displayName).toBe(""); // schema default before save
-      // Simulate the pre-save hook logic directly: if displayName is empty, use username
-      if (!user.displayName || user.displayName === '') {
-        user.displayName = user.username;
-      }
-      expect(user.displayName).toBe("alice");
+  describe('profile fields', () => {
+    test('displayName defaults to username on save', async () => {
+      const user = new User({ username: 'alice', password: 'pass' });
+      expect(user.displayName).toBe('');
+      await user.save();
+      expect(user.displayName).toBe('alice');
     });
 
-    test("displayName accepts a valid value", async () => {
-      const user = new User({ username: "alice", password: "pass", displayName: "Alice Chen" });
+    test('displayName accepts a valid value', async () => {
+      const user = new User({ username: 'alice', password: 'pass', displayName: 'Alice Chen' });
       let err;
       try {
         await user.validate();
@@ -79,8 +93,8 @@ describe("User schema", () => {
       expect(err).toBeUndefined();
     });
 
-    test("displayName exceeding 50 codepoints fails validation", async () => {
-      const user = new User({ username: "alice", password: "pass", displayName: "x".repeat(51) });
+    test('displayName exceeding 50 codepoints fails validation', async () => {
+      const user = new User({ username: 'alice', password: 'pass', displayName: 'x'.repeat(51) });
       let err;
       try {
         await user.validate();
@@ -91,13 +105,13 @@ describe("User schema", () => {
       expect(err.errors.displayName).toBeDefined();
     });
 
-    test("bio defaults to empty string", () => {
-      const user = new User({ username: "alice", password: "pass" });
-      expect(user.bio).toBe("");
+    test('bio defaults to empty string', () => {
+      const user = new User({ username: 'alice', password: 'pass' });
+      expect(user.bio).toBe('');
     });
 
-    test("bio exceeding 160 codepoints fails validation", async () => {
-      const user = new User({ username: "alice", password: "pass", bio: "x".repeat(161) });
+    test('bio exceeding 160 codepoints fails validation', async () => {
+      const user = new User({ username: 'alice', password: 'pass', bio: 'x'.repeat(161) });
       let err;
       try {
         await user.validate();
@@ -108,14 +122,14 @@ describe("User schema", () => {
       expect(err.errors.bio).toBeDefined();
     });
 
-    test("status defaults to 'online'", () => {
-      const user = new User({ username: "alice", password: "pass" });
-      expect(user.status).toBe("online");
+    test('status defaults to online', () => {
+      const user = new User({ username: 'alice', password: 'pass' });
+      expect(user.status).toBe('online');
     });
 
-    test("status accepts valid enum values", async () => {
-      for (const status of ["online", "away", "busy", "offline"]) {
-        const user = new User({ username: "alice", password: "pass", status });
+    test('status accepts valid enum values', async () => {
+      for (const status of ['online', 'away', 'busy', 'offline']) {
+        const user = new User({ username: 'alice', password: 'pass', status });
         let err;
         try {
           await user.validate();
@@ -126,8 +140,8 @@ describe("User schema", () => {
       }
     });
 
-    test("status set to an invalid value fails validation", async () => {
-      const user = new User({ username: "alice", password: "pass", status: "invalid" });
+    test('status set to an invalid value fails validation', async () => {
+      const user = new User({ username: 'alice', password: 'pass', status: 'invalid' });
       let err;
       try {
         await user.validate();
@@ -138,13 +152,13 @@ describe("User schema", () => {
       expect(err.errors.status).toBeDefined();
     });
 
-    test("all profile fields validate together successfully", async () => {
+    test('all profile fields validate together successfully', async () => {
       const user = new User({
-        username: "alice",
-        password: "pass",
-        displayName: "Alice Chen",
-        bio: "Just here to chat.",
-        status: "away"
+        username: 'alice',
+        password: 'pass',
+        displayName: 'Alice Chen',
+        bio: 'Just here to chat.',
+        status: 'away',
       });
       let err;
       try {

@@ -9,6 +9,8 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:e2e": "npx jest --selectProjects e2e --runInBand",
+    "test:regressions": "jest __tests__/client/visual.regressions.test.js __tests__/client/ui.behavior.test.js",
+    "test:browser": "playwright test",
     "test:ci": "jest --selectProjects server client --coverage --ci --reporters=default && jest --selectProjects server-sockets --runInBand --coverage --ci --reporters=default && npx jest --selectProjects e2e --runInBand --ci --reporters=default"
   },
   "jest": {
@@ -114,9 +116,11 @@
   "devDependencies": {
     "@babel/core": "^7.29.0",
     "@babel/preset-env": "^7.29.5",
+    "@playwright/test": "^1.60.0",
     "dotenv": "^17.4.2",
     "jest": "^30.4.2",
     "jest-environment-jsdom": "^30.4.1",
+    "mongodb-memory-server": "^11.2.0",
     "socket.io-client": "^4.8.3",
     "supertest": "^7.2.2"
   }

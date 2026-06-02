@@ -32,13 +32,17 @@ A real-time chat application built with Node.js, Socket.IO, and MongoDB. Users c
 
 | Layer | Technology |
 |---|---|
-| Frontend | HTML, CSS, Vanilla JavaScript |
-| Backend | Node.js, Express |
+| Frontend | HTML, CSS, Vanilla JavaScript (ES modules) |
+| Backend | Node.js, Express 5 |
 | Real-time | Socket.IO |
 | Database | MongoDB (via Mongoose) |
 | Auth | bcryptjs (password hashing), JSON Web Tokens, localStorage |
-| Security | express-rate-limit |
-| Hosting | Railway |
+| File Storage | Cloudinary (cloud image/audio/file hosting) |
+| File Parsing | multer (multipart form handling, memory storage) |
+| Logging | winston (structured JSON output) |
+| Security | helmet, CORS, express-rate-limit |
+| Testing | Jest, supertest, socket.io-client (unit, integration, E2E) |
+| Hosting | Railway (ephemeral filesystem) |
 | Database Host | MongoDB Atlas |
 | Version Control | GitHub |
 
@@ -51,37 +55,57 @@ chat-app/
 ├── server.js              # Main server file — starts everything
 ├── app.js                 # Express app setup — middleware, routes, error handling
 ├── .env                   # Secret config values (never commit this)
+├── .env.example           # Template with placeholder values (commit this)
 ├── babel.config.json      # Babel configuration for ES module support in tests
+├── package.json           # Dependencies, scripts, Jest configuration
 ├── config/
+│   ├── cloudinary.js      # Cloudinary SDK configuration and upload helper
 │   ├── db.js              # MongoDB connection setup
 │   └── env.js             # Environment variable validation and access
 ├── middleware/
-│   ├── auth.js            # JWT verification middleware for routes
-│   ├── rateLimiter.js     # Rate limiting config for auth routes
-│   └── security.js        # Additional security middleware (helmet, cors, etc.)
+│   ├── auth.js            # JWT verification + token revocation check
+│   ├── errorHandler.js    # Global Express error handler
+│   ├── rateLimiter.js     # Generic in-memory rate limiter factory
+│   ├── security.js        # Security headers (helmet, CSP, CORS)
+│   └── upload.js          # multer config (avatar 5MB, attachment 25MB, memory storage)
 ├── models/
-│   ├── User.js            # Database schema for users
-│   └── Message.js         # Database schema for messages
+│   ├── User.js            # User schema (username, displayName, bio, status, avatarUrl, lastLogout)
+│   └── Message.js         # Message schema (sender, receiver, message, attachment, senderDisplayName)
 ├── routes/
-│   ├── auth.js            # Register and login routes with rate limiting
-│   └── messages.js        # Message retrieval routes (global + private history)
+│   ├── auth.js            # Auth routes: register, login, logout, me, profile (with avatar upload)
+│   └── messages.js        # Message routes: global/private history (paginated), file upload
 ├── sockets/
-│   ├── index.js           # Socket.IO server setup and event wiring
-│   ├── state.js           # In-memory state: online users, socket maps
+│   ├── index.js           # Socket.IO server setup, JWT auth middleware, handler wiring
+│   ├── state.js           # In-memory state: online users, socket maps, typing timeouts
 │   └── handlers/
-│       └── ...            # Individual event handlers (message, typing, etc.)
+│       ├── globalMessage.js   # Global message validation, persistence, broadcast
+│       ├── privateMessage.js  # Private message validation, persistence, broadcast
+│       ├── presence.js        # join_room, disconnect, online_users management
+│       ├── sync.js            # Reconnection sync (missed messages since lastSeenAt)
+│       └── typing.js          # Typing indicator start/stop with debounce
 ├── utils/
-│   └── logger.js          # Custom logger utility
+│   ├── HttpError.js       # Custom error class (message, statusCode, errorCode)
+│   ├── logger.js          # Winston structured JSON logger
+│   └── socketError.js     # Socket error emission helper
 ├── public/
 │   ├── index.html         # Frontend — the entire chat UI
 │   ├── css/
-│   │   └── ...            # Stylesheets
+│   │   └── style.css      # Stylesheets (light/dark themes, responsive layout)
 │   └── js/
-│       └── ...            # Client-side JavaScript
+│       ├── app.js         # Application entry point, event wiring, auth flows
+│       └── modules/
+│           ├── api.js     # REST API client (fetch wrappers for all endpoints)
+│           ├── optimistic.js  # Optimistic message sending and resolution
+│           ├── recorder.js    # MediaRecorder wrapper for voice messages
+│           ├── socket.js  # Socket.IO client event handlers and emit wrappers
+│           ├── state.js   # Client-side application state management
+│           ├── ui.js      # DOM manipulation and rendering
+│           └── utils.js   # Shared utilities (time formatting, scroll, copy)
 └── __tests__/
-    ├── unit/              # Unit tests
-    ├── integration/       # Integration tests
-    └── e2e/               # End-to-end tests
+    ├── unit/              # Unit tests (server + client)
+    ├── client/            # Client-specific unit tests (state, recorder, socket)
+    ├── integration/       # Integration tests (routes, sockets with real MongoDB)
+    └── e2e/               # End-to-end tests (full server + MongoDB test database)
 ```
 
 ---
@@ -145,6 +169,9 @@ This project uses **Jest** with three test suites:
 | `npm run test:watch` | Tests in watch mode |
 | `npm run test:coverage` | Tests with coverage report (80% threshold) |
 | `npm run test:e2e` | End-to-end tests (requires `TEST_MONGO_URI` in `.env`) |
+| `npm run test:ci` | Full CI pipeline: server + client with coverage, then E2E |
+
+**Coverage thresholds:** 80% statements, 75% branches, 80% functions, 80% lines (global). Per-directory thresholds apply to `config/cloudinary.js` (70%), `middleware/upload.js` (95%), and `public/js/modules/recorder.js` (80%).
 
 ---
 
@@ -263,6 +290,24 @@ Socket errors are emitted as an `error_message` event with the same payload shap
 | `private_message_failed` | Server error while sending a private message | 500 |
 | `global_sync_failed` | Server error during global sync | 500 |
 | `private_sync_failed` | Server error during private sync | 500 |
+| `token_revoked` | Token issued before user's last logout | 403 |
+| `user_not_found` | User does not exist | 404 |
+| `invalid_display_name` | Display name fails validation | 400 |
+| `invalid_bio` | Bio fails validation (length or HTML) | 400 |
+| `invalid_status` | Status is not online/away/busy | 400 |
+| `no_fields` | Profile update with no valid fields | 400 |
+| `profile_update_failed` | Server error during profile update | 500 |
+| `avatar_upload_failed` | Cloudinary avatar upload failed | 500 |
+| `no_file` | Upload request with no file attached | 400 |
+| `room_required` | Upload request missing room field | 400 |
+| `receiver_required` | Private upload missing receiver | 400 |
+| `forbidden_upload` | User not authorized for upload | 403 |
+| `voice_size_exceeded` | Audio file exceeds 10MB limit | 400 |
+| `upload_failed` | Cloudinary file upload failed | 500 |
+| `upload_error` | Server error during upload | 500 |
+| `upload_rate_limited` | Too many upload requests | 429 |
+| `invalid_pagination_cursor` | Invalid `before` query parameter | 400 |
+| `logout_failed` | Server error during logout | 500 |
 | `internal_error` | Default fallback code | 500 |
 
 ### Usage in Routes
@@ -303,11 +348,18 @@ new HttpError(message, statusCode, errorCode)
 
 - Passwords are hashed with bcrypt before storing — never stored as plain text
 - Auth routes are rate limited to 10 requests per IP per 15 minutes
+- Profile updates are rate limited to 20 per hour per IP
+- File uploads are rate limited to 20 per 15 minutes per IP
 - Login errors use a vague message (`"Invalid username or password"`) to prevent username enumeration
 - Socket messages are validated server-side — sender identity comes from the verified socket session, not client data
 - Messages are capped at 1000 characters
 - All message content is rendered with `textContent` (not `innerHTML`) to prevent XSS
-- HTTP and Socket auth both require JWT; invalid/expired tokens are rejected
+- HTTP and Socket auth both require JWT; invalid/expired/revoked tokens are rejected
+- JWT tokens are revoked on logout via `lastLogout` timestamp check
+- File uploads enforce MIME type allowlisting (images, PDF, audio, text, zip) and size limits (5MB avatars, 25MB attachments, 10MB voice)
+- `multer` uses memory storage (not disk) to work with Railway's ephemeral filesystem
+- Content-Security-Policy header is set via helmet
+- Cloudinary errors are never forwarded to the client — generic error messages are returned instead
 
 ---
 

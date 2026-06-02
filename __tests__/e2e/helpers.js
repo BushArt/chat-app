@@ -6,8 +6,9 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
 const request = require('supertest');
 const ioClient = require('socket.io-client');
 const mongoose = require('mongoose');
+const { readMemoryMongoUri } = require('./mongoMemory');
 
-const baseTestUri = process.env.TEST_MONGO_URI || process.env.MONGO_URI;
+const baseTestUri = process.env.TEST_MONGO_URI || readMemoryMongoUri() || process.env.MONGO_URI;
 const jestWorkerId = process.env.JEST_WORKER_ID;
 
 function buildWorkerTestUri(uri, workerId) {

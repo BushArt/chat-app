@@ -1,14 +1,16 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
+const { stopMemoryMongo, readMemoryMongoUri } = require('./mongoMemory');
 
 module.exports = async () => {
   process.env.NODE_ENV = 'test';
 
-  if (!process.env.TEST_MONGO_URI) {
-    throw new Error('TEST_MONGO_URI must be defined for end-to-end tests.');
+  const uri = process.env.TEST_MONGO_URI || readMemoryMongoUri();
+  if (uri) {
+    await mongoose.connect(uri);
+    await mongoose.connection.dropDatabase();
+    await mongoose.disconnect();
   }
 
-  await mongoose.connect(process.env.TEST_MONGO_URI);
-  await mongoose.connection.dropDatabase();
-  await mongoose.disconnect();
+  await stopMemoryMongo();
 };

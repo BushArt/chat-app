@@ -310,6 +310,84 @@ describe('attachment upload and send end-to-end', () => {
     expect(typeof persisted.attachment.size).toBe('number');
     expect(persisted.attachment.size).toBeGreaterThan(0);
   });
+
+  test('persists a global voice message with audio attachment metadata', async () => {
+    uploadToCloudinary.mockResolvedValueOnce({
+      secure_url: 'https://res.cloudinary.com/test/chat-app/attachments/voice-e2e',
+      public_id: 'voice-e2e',
+      bytes: 2048,
+    });
+
+    const aliceToken = await registerAndLogin('voice_alice');
+    const uploadRes = await api
+      .post('/messages/upload')
+      .field('room', 'global')
+      .field('isGlobal', 'true')
+      .attach('file', Buffer.from('fake-audio'), { filename: 'voice.webm', contentType: 'audio/webm' })
+      .set('Authorization', `Bearer ${aliceToken}`);
+
+    expect(uploadRes.status).toBe(200);
+    expect(uploadRes.body.type).toBe('audio');
+
+    const alice = await createConnectedClient(aliceToken);
+    await waitForEvent(alice, 'connect');
+
+    alice.emit('send_global_message', {
+      message: '',
+      clientId: 'e2e-voice-c1',
+      attachment: uploadRes.body,
+    });
+
+    await waitUntil(async () => !!(await Message.findOne({ clientId: 'e2e-voice-c1' })));
+
+    const persisted = await Message.findOne({ clientId: 'e2e-voice-c1' });
+    expect(persisted).not.toBeNull();
+    expect(persisted.attachment).toMatchObject({
+      type: 'audio',
+      filename: 'voice.webm',
+      mimetype: 'audio/webm',
+    });
+  });
+});
+
+describe('reconnect and sync end-to-end', () => {
+  test('reconnecting client receives missed global messages via sync', async () => {
+    const aliceToken = await registerAndLogin('sync_alice');
+    const bobToken = await registerAndLogin('sync_bob');
+
+    const alice = await createConnectedClient(aliceToken);
+    await waitForEvent(alice, 'connect');
+    await waitForEvent(alice, 'online_users');
+
+    const firstMsgPromise = waitForEvent(alice, 'receive_global_message');
+    const bob = await createConnectedClient(bobToken);
+    await waitForEvent(bob, 'connect');
+    bob.emit('send_global_message', { message: 'First message', clientId: 'sync-c1' });
+    const firstMsg = await firstMsgPromise;
+    const lastSeenAt = firstMsg.createdAt;
+
+    alice.close();
+    await waitUntil(() => !state.onlineUsers.has('sync_alice'));
+
+    bob.emit('send_global_message', { message: 'Missed message', clientId: 'sync-c2' });
+    await waitUntil(async () => !!(await Message.findOne({ clientId: 'sync-c2' })));
+
+    const alice2 = await createConnectedClient(aliceToken);
+    await waitForEvent(alice2, 'connect');
+
+    const missedPromise = waitForEvent(alice2, 'receive_global_message');
+    const ackPromise = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('sync ack timeout')), 5000);
+      alice2.emit('sync', { type: 'global', lastSeenAt }, (ack) => {
+        clearTimeout(timer);
+        resolve(ack);
+      });
+    });
+
+    const [missed, ack] = await Promise.all([missedPromise, ackPromise]);
+    expect(ack).toEqual({ status: 'ok', count: 1 });
+    expect(missed).toMatchObject({ message: 'Missed message', clientId: 'sync-c2' });
+  });
 });
 
 describe('presence end-to-end', () => {

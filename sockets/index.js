@@ -4,6 +4,7 @@
  */
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { isTokenRevoked } = require('../utils/tokenRevocation');
 const makeRateLimiter = require('../middleware/rateLimiter');
 
 const state = require('./state');
@@ -26,10 +27,10 @@ module.exports = function setupSockets(io) {
       const payload = jwt.verify(token, process.env.JWT_SECRET);
       socket.username = payload.username;
       // JWT revocation check
-      if (payload.iat) {
+      if (payload.loginAt != null || payload.iat) {
         User.findById(payload.id).select('lastLogout').lean()
           .then(user => {
-            if (user && user.lastLogout && payload.iat * 1000 < user.lastLogout.getTime()) {
+            if (user && isTokenRevoked(payload, user.lastLogout)) {
               return next(new Error('Token revoked'));
             }
             // Pass any other DB errors through

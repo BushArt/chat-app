@@ -865,3 +865,47 @@ describe("PUT /auth/profile — avatar upload", () => {
     expect(res.body).toHaveProperty("code", "avatar_upload_failed");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// POST /auth/logout
+// ─────────────────────────────────────────────────────────────────────
+describe("POST /auth/logout", () => {
+  beforeEach(() => {
+    jwt.verify.mockReturnValue({ id: "user-id-123", username: "alice", iat: Math.floor(Date.now() / 1000) });
+    mockFindByIdReturns({ _id: "user-id-123", username: "alice", lastLogout: null });
+    User.findByIdAndUpdate.mockReset();
+    User.findByIdAndUpdate.mockResolvedValue({});
+  });
+
+  test("returns 401 without JWT", async () => {
+    const app = createApp();
+    const res = await request(app).post("/auth/logout");
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe("authentication_required");
+  });
+
+  test("returns 200 and records lastLogout timestamp", async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post("/auth/logout")
+      .set("Authorization", "Bearer valid-token");
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("message");
+    expect(User.findByIdAndUpdate).toHaveBeenCalledWith(
+      "user-id-123",
+      expect.objectContaining({ lastLogout: expect.any(Date) })
+    );
+  });
+
+  test("returns 500 when lastLogout update fails", async () => {
+    User.findByIdAndUpdate.mockRejectedValue(new Error("db error"));
+    const app = createApp();
+    const res = await request(app)
+      .post("/auth/logout")
+      .set("Authorization", "Bearer valid-token");
+
+    expect(res.status).toBe(500);
+    expect(res.body.code).toBe("logout_failed");
+  });
+});

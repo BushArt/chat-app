@@ -182,7 +182,7 @@ router.post('/register', authLimiter, async (req, res, next) => {
     }
 
     const token = jwt.sign(
-      { id: user._id, username: user.username },
+      { id: user._id, username: user.username, loginAt: Date.now() },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
@@ -241,7 +241,7 @@ router.post('/login', authLimiter, async (req, res, next) => {
     }
 
     const token = jwt.sign(
-      { id: user._id, username: user.username },
+      { id: user._id, username: user.username, loginAt: Date.now() },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );

@@ -1,14 +1,14 @@
 jest.setTimeout(30000);
 
-const { startE2EServer, stopE2EServer, User, Message } = require('./helpers');
+const { startE2EServer, stopE2EServer, User, Message, connectSocket, waitForEvent } = require('./helpers');
 
 let api;
-let stopServer;
+let port;
 
 beforeAll(async () => {
   const serverContext = await startE2EServer();
   api = serverContext.api;
-  stopServer = serverContext.server;
+  port = serverContext.port;
 });
 
 afterAll(async () => {
@@ -138,5 +138,56 @@ describe('auth end-to-end', () => {
     expect(bioUpdate.status).toBe(200);
     expect(bioUpdate.body.displayName).toBe('Bob Smith');
     expect(bioUpdate.body.bio).toBe('Just a bio');
+  });
+});
+
+describe('logout and token revocation end-to-end', () => {
+  test('logout revokes existing token for REST requests', async () => {
+    await api.post('/auth/register').send({ username: 'logout_alice', password: 'password123' });
+    const loginResponse = await api.post('/auth/login').send({ username: 'logout_alice', password: 'password123' });
+    const token = loginResponse.body.token;
+
+    const logoutResponse = await api
+      .post('/auth/logout')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(logoutResponse.status).toBe(200);
+
+    const meResponse = await api
+      .get('/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(meResponse.status).toBe(403);
+  });
+
+  test('revoked token cannot open a new socket connection', async () => {
+    await api.post('/auth/register').send({ username: 'logout_bob', password: 'password123' });
+    const loginResponse = await api.post('/auth/login').send({ username: 'logout_bob', password: 'password123' });
+    const token = loginResponse.body.token;
+
+    await api.post('/auth/logout').set('Authorization', `Bearer ${token}`);
+
+    const client = connectSocket(port, token);
+    await expect(waitForEvent(client, 'connect_error')).resolves.toBeDefined();
+    client.close();
+  });
+
+  test('user can log in again after logout', async () => {
+    await api.post('/auth/register').send({ username: 'logout_carol', password: 'password123' });
+    const firstLogin = await api.post('/auth/login').send({ username: 'logout_carol', password: 'password123' });
+    const token = firstLogin.body.token;
+
+    await api.post('/auth/logout').set('Authorization', `Bearer ${token}`);
+
+    const secondLogin = await api.post('/auth/login').send({ username: 'logout_carol', password: 'password123' });
+    expect(secondLogin.status).toBe(200);
+    expect(secondLogin.body.token).toBeTruthy();
+
+    const meResponse = await api
+      .get('/auth/me')
+      .set('Authorization', `Bearer ${secondLogin.body.token}`);
+
+    expect(meResponse.status).toBe(200);
+    expect(meResponse.body.username).toBe('logout_carol');
   });
 });

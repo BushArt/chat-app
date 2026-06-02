@@ -6,7 +6,7 @@ jest.mock("../../config/cloudinary", () => ({
 }));
 
 const { uploadToCloudinary } = require("../../config/cloudinary");
-const { startE2EServer, stopE2EServer, waitForEvent, connectAndWait, connectSocket, state, User, Message } = require('./helpers');
+const { startE2EServer, stopE2EServer, waitForEvent, waitUntil, connectAndWait, connectSocket, state, User, Message } = require('./helpers');
 
 let api;
 let app;
@@ -112,7 +112,7 @@ describe('private messaging end-to-end', () => {
     alice.emit('join_room', room);
     bob.emit('join_room', room);
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await waitUntil(() => alice.connected && bob.connected);
 
     const bobReceived = waitForEvent(bob, 'receive_message');
     let charlieReceived = false;
@@ -130,7 +130,8 @@ describe('private messaging end-to-end', () => {
     const payload = await bobReceived;
 
     expect(payload).toMatchObject({ sender: 'alice', message: 'Private hello', clientId: 'private-c1', room });
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    const graceDeadline = Date.now() + 200;
+    await waitUntil(() => charlieReceived === true || Date.now() >= graceDeadline, { timeout: 1000, interval: 25 });
     expect(charlieReceived).toBe(false);
 
     const persisted = await Message.findOne({ clientId: 'private-c1', isGlobal: false, receiver: 'bob' });
@@ -295,7 +296,7 @@ describe('attachment upload and send end-to-end', () => {
       attachment: uploadRes.body
     });
 
-    await new Promise((r) => setTimeout(r, 500));
+    await waitUntil(async () => !!(await Message.findOne({ clientId: 'e2e-attach-c2' })));
 
     // Verify full persistence
     const persisted = await Message.findOne({ clientId: 'e2e-attach-c2' });
@@ -337,7 +338,7 @@ describe('presence end-to-end', () => {
     await onlineUsersPromise;
 
     alice.close();
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await waitUntil(() => !state.onlineUsers.has('alice'));
 
     expect(state.onlineUsers.has('alice')).toBe(false);
   });

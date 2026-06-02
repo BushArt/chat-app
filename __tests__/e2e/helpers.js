@@ -74,6 +74,15 @@ function waitForEvent(emitter, event, timeout = 5000) {
   });
 }
 
+async function waitUntil(predicate, { timeout = 5000, interval = 50 } = {}) {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    if (await predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, interval));
+  }
+  throw new Error('waitUntil: condition not met within timeout');
+}
+
 function connectSocket(port, token) {
   return ioClient(`http://127.0.0.1:${port}`, {
     transports: ['websocket'],
@@ -102,6 +111,7 @@ module.exports = {
   startE2EServer,
   stopE2EServer,
   waitForEvent,
+  waitUntil,
   connectSocket,
   connectAndWait,
   state,

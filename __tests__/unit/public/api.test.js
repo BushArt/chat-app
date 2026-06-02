@@ -171,7 +171,7 @@ describe('fetchPrivateHistory', () => {
   });
 
   test('throws on non-JSON content-type for fetchPrivateHistory', async () => {
-    state.setCurrentToken('test-token');
+    state.setCurrentToken('token');
     global.fetch.mockResolvedValue({
       ok: true,
       headers: { get: () => 'text/plain' },
@@ -179,5 +179,188 @@ describe('fetchPrivateHistory', () => {
     });
 
     await expect(api.fetchPrivateHistory('alice', 'bob')).rejects.toThrow('Invalid JSON response');
+  });
+});
+
+describe('uploadAttachment', () => {
+  test('sends POST to /messages/upload with FormData and Bearer token', async () => {
+    state.setCurrentToken('test-token');
+    const file = new File(['hello'], 'test.png', { type: 'image/png' });
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ type: 'image', filename: 'test.png', url: 'https://cdn.example.com/test.png', mimetype: 'image/png', size: 5 })
+    });
+
+    const result = await api.uploadAttachment(file, null, null, true);
+
+    expect(fetch).toHaveBeenCalledWith('/messages/upload', expect.objectContaining({
+      method: 'POST',
+      headers: { Authorization: 'Bearer test-token' }
+    }));
+    expect(result).toEqual(expect.objectContaining({ type: 'image', url: 'https://cdn.example.com/test.png' }));
+  });
+
+  test('appends receiver and room to FormData for private uploads', async () => {
+    state.setCurrentToken('test-token');
+    const file = new File(['data'], 'doc.pdf', { type: 'application/pdf' });
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ type: 'file', filename: 'doc.pdf', url: 'https://cdn.example.com/doc.pdf', mimetype: 'application/pdf', size: 4 })
+    });
+
+    await api.uploadAttachment(file, 'alice:bob', 'bob', false);
+
+    const callArgs = fetch.mock.calls[0];
+    const body = callArgs[1].body;
+    expect(body).toBeInstanceOf(FormData);
+    expect(body.get('receiver')).toBe('bob');
+    expect(body.get('room')).toBe('alice:bob');
+  });
+
+  test('rejects disallowed MIME type before upload', async () => {
+    state.setCurrentToken('test-token');
+    const file = new File(['<script>'], 'evil.html', { type: 'text/html' });
+
+    await expect(api.uploadAttachment(file, null, null, true)).rejects.toThrow('File type "text/html" is not supported.');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test('rejects file exceeding 25 MB size limit', async () => {
+    state.setCurrentToken('test-token');
+    const file = new File(['x'], 'big.zip', { type: 'application/zip' });
+    Object.defineProperty(file, 'size', { value: 30 * 1024 * 1024 });
+
+    await expect(api.uploadAttachment(file, null, null, true)).rejects.toThrow('File exceeds the 25 MB size limit');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test('throws error on non-ok server response', async () => {
+    state.setCurrentToken('test-token');
+    const file = new File(['data'], 'test.png', { type: 'image/png' });
+    global.fetch.mockResolvedValue({
+      ok: false,
+      json: async () => ({ error: 'Upload quota exceeded.' })
+    });
+
+    await expect(api.uploadAttachment(file, null, null, true)).rejects.toThrow('Upload quota exceeded.');
+  });
+
+  test('throws generic error when server response has no error field', async () => {
+    state.setCurrentToken('test-token');
+    const file = new File(['data'], 'test.png', { type: 'image/png' });
+    global.fetch.mockResolvedValue({
+      ok: false,
+      json: async () => ({})
+    });
+
+    await expect(api.uploadAttachment(file, null, null, true)).rejects.toThrow('Upload failed.');
+  });
+});
+
+describe('fetchProfile', () => {
+  test('sends GET to /auth/me with Bearer token', async () => {
+    state.setCurrentToken('test-token');
+    const profileData = { username: 'alice', displayName: 'Alice Chen', bio: 'Hello', status: 'online', avatarUrl: null };
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => profileData
+    });
+
+    const result = await api.fetchProfile();
+
+    expect(fetch).toHaveBeenCalledWith('/auth/me', {
+      headers: { Authorization: 'Bearer test-token' }
+    });
+    expect(result).toEqual(profileData);
+  });
+
+  test('throws error with message from server on non-ok response', async () => {
+    state.setCurrentToken('test-token');
+    global.fetch.mockResolvedValue({
+      ok: false,
+      json: async () => ({ error: 'Token expired.' })
+    });
+
+    await expect(api.fetchProfile()).rejects.toThrow('Token expired.');
+  });
+
+  test('throws generic error when server returns non-ok without error field', async () => {
+    state.setCurrentToken('test-token');
+    global.fetch.mockResolvedValue({
+      ok: false,
+      json: async () => ({})
+    });
+
+    await expect(api.fetchProfile()).rejects.toThrow('Failed to fetch profile.');
+  });
+
+  test('throws generic error when JSON parsing fails', async () => {
+    state.setCurrentToken('test-token');
+    global.fetch.mockResolvedValue({
+      ok: false,
+      json: async () => { throw new Error('Invalid JSON'); }
+    });
+
+    await expect(api.fetchProfile()).rejects.toThrow('Failed to fetch profile.');
+  });
+});
+
+describe('updateProfile', () => {
+  test('sends PUT with JSON body when no avatarFile', async () => {
+    state.setCurrentToken('test-token');
+    const updatedProfile = { username: 'alice', displayName: 'Alice Smith', bio: 'Updated', status: 'away', avatarUrl: null };
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => updatedProfile
+    });
+
+    const result = await api.updateProfile({ displayName: 'Alice Smith', bio: 'Updated' });
+
+    expect(fetch).toHaveBeenCalledWith('/auth/profile', {
+      method: 'PUT',
+      headers: { Authorization: 'Bearer test-token', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName: 'Alice Smith', bio: 'Updated' })
+    });
+    expect(result).toEqual(updatedProfile);
+  });
+
+  test('sends PUT with multipart FormData when avatarFile is provided', async () => {
+    state.setCurrentToken('test-token');
+    const avatarFile = new File(['img'], 'avatar.png', { type: 'image/png' });
+    const updatedProfile = { username: 'alice', displayName: 'Alice', bio: '', status: 'online', avatarUrl: 'https://cdn.example.com/avatar.png' };
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => updatedProfile
+    });
+
+    const result = await api.updateProfile({ displayName: 'Alice' }, avatarFile);
+
+    const callArgs = fetch.mock.calls[0];
+    expect(callArgs[1].method).toBe('PUT');
+    expect(callArgs[1].headers).toEqual({ Authorization: 'Bearer test-token' });
+    expect(callArgs[1].body).toBeInstanceOf(FormData);
+    expect(callArgs[1].body.get('displayName')).toBe('Alice');
+    expect(callArgs[1].body.get('avatar')).toBe(avatarFile);
+    expect(result).toEqual(updatedProfile);
+  });
+
+  test('throws error on non-ok server response', async () => {
+    state.setCurrentToken('test-token');
+    global.fetch.mockResolvedValue({
+      ok: false,
+      json: async () => ({ error: 'Display name too long.' })
+    });
+
+    await expect(api.updateProfile({ displayName: 'x'.repeat(51) })).rejects.toThrow('Display name too long.');
+  });
+
+  test('throws generic error when server response has no error field', async () => {
+    state.setCurrentToken('test-token');
+    global.fetch.mockResolvedValue({
+      ok: false,
+      json: async () => ({})
+    });
+
+    await expect(api.updateProfile({ bio: 'test' })).rejects.toThrow('Profile update failed.');
   });
 });

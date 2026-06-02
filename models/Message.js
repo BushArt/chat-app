@@ -35,6 +35,9 @@ const messageSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  // senderDisplayName is denormalized at write time (populated from User.displayName
+  // when the message is saved). If a user later changes their display name, historical
+  // messages retain the name that was in use when they were sent. No read-repair needed.
   senderDisplayName: {
     type: String,
     default: ''

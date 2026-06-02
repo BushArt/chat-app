@@ -19,6 +19,12 @@ A real-time chat application built with Node.js, Socket.IO, and MongoDB. Users c
 - Optimistic message sending with pending-state UI
 - Rate limiting on auth routes to prevent brute-force attacks
 - XSS protection — all message content is safely rendered as plain text
+- User profiles with display name, bio, and status (online/away/busy)
+- Avatar upload with Cloudinary storage
+- File attachments (images, documents, audio) in messages
+- Voice message recording directly in the browser
+- JWT token revocation on logout
+- Cursor-based message pagination
 
 ---
 
@@ -159,8 +165,12 @@ This project uses **Jest** with three test suites:
 |---|---|---|
 | POST | `/auth/register` | Create a new user account |
 | POST | `/auth/login` | Log in and receive a JWT token |
-| GET | `/messages/global` | Fetch global chat history |
-| GET | `/messages/:user1/:user2` | Fetch private message history between two users |
+| POST | `/auth/logout` | Log out and revoke all active tokens |
+| GET | `/auth/me` | Get the current user's profile (JWT required) |
+| PUT | `/auth/profile` | Update profile: displayName, bio, status, avatar (JWT required) |
+| GET | `/messages/global` | Fetch global chat history (supports `?before=` pagination) |
+| GET | `/messages/:user1/:user2` | Fetch private message history (supports `?before=` pagination) |
+| POST | `/messages/upload` | Upload a file attachment (JWT required) |
 
 ---
 
@@ -178,11 +188,17 @@ This app uses **Socket.IO** to maintain a persistent connection between the brow
 
 ## Environment Variables
 
-| Variable | Description |
-|---|---|
-| `MONGO_URI` | MongoDB Atlas connection string |
-| `JWT_SECRET` | Secret key for signing login tokens |
-| `PORT` | Port the server runs on (default: 3000) |
+| Variable | Description | Required |
+|---|---|---|
+| `MONGO_URI` | MongoDB Atlas connection string | Yes |
+| `JWT_SECRET` | Secret key for signing login tokens | Yes |
+| `PORT` | Port the server runs on (default: 3000) | No |
+| `CLOUDINARY_URL` | Cloudinary API URL for avatar/file uploads | Production only |
+| `CLIENT_ORIGIN` | Allowed CORS origin (e.g., Railway URL) | Production only |
+| `BCRYPT_ROUNDS` | bcrypt hashing rounds (default: 10) | No |
+| `TEST_MONGO_URI` | Separate test database for E2E tests | E2E testing only |
+
+> See `.env.example` for a template with placeholder values.
 
 > ⚠️ Never commit your `.env` file. It is listed in `.gitignore` and should stay there.
 > On Railway, set these same variables in the **Variables** tab of your service.
@@ -309,9 +325,15 @@ new HttpError(message, statusCode, errorCode)
 - [x] Dark mode
 - [x] Relative/exact time toggle
 - [x] Deployed to Railway
+- [x] User profiles (display name, bio, status)
+- [x] Avatar upload (Cloudinary)
+- [x] File attachments (images, documents, audio)
+- [x] Voice message recording
+- [x] JWT token revocation on logout
+- [x] Message pagination
+- [x] Comprehensive test suite (unit, integration, E2E)
 - [ ] Read receipts
 - [ ] Group chats
-- [ ] Image sharing
 
 ---
 

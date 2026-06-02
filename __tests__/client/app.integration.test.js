@@ -78,9 +78,11 @@ beforeAll(async () => {
   initApp = appMod.init;
 });
 
-async function bootApp() {
+async function bootApp(options = {}) {
   jest.clearAllMocks();
-  localStorage.clear();
+  if (!options.keepStorage) {
+    localStorage.clear();
+  }
   mountAppHtml();
   mockFetchGlobalHistory.mockResolvedValue({ messages: [], hasMore: false, cursor: null });
   mockFetchProfile.mockResolvedValue({ ...profileResponse, token: undefined });
@@ -244,5 +246,108 @@ describe('app.js file attachments', () => {
 
     expect(mockUploadAttachment).not.toHaveBeenCalled();
     expect(document.getElementById('global-messages').textContent).toContain('not supported');
+  });
+});
+
+describe('app.js session restore', () => {
+  test('restores chat session from localStorage and fetches profile', async () => {
+    localStorage.setItem('chat_token', 'saved-token');
+    localStorage.setItem('chat_user', 'alice');
+
+    jest.clearAllMocks();
+    mountAppHtml();
+    mockFetchGlobalHistory.mockResolvedValue({ messages: [], hasMore: false, cursor: null });
+    mockFetchProfile.mockResolvedValue({
+      ...profileResponse,
+      displayName: 'Alice Display',
+      token: undefined,
+    });
+
+    const stateMod = await import('../../public/js/modules/state.js');
+    stateMod.resetAllState();
+    initApp();
+    await Promise.resolve();
+
+    expect(mockFetchProfile).toHaveBeenCalled();
+    expect(mockConnect).toHaveBeenCalledWith('saved-token');
+    expect(document.getElementById('chat-screen').classList.contains('hidden')).toBe(false);
+    expect(document.getElementById('logged-in-as').textContent).toContain('Alice Display');
+  });
+
+  test('shows auth screen when no saved token', async () => {
+    await bootApp();
+
+    expect(mockFetchProfile).not.toHaveBeenCalled();
+    expect(mockConnect).not.toHaveBeenCalled();
+    expect(document.getElementById('auth-screen').classList.contains('hidden')).toBe(false);
+    expect(document.getElementById('chat-screen').classList.contains('hidden')).toBe(true);
+  });
+});
+
+describe('app.js optimistic send failure', () => {
+  test('marks pending global message failed after timeout with no socket confirmation', async () => {
+    await bootApp();
+    await loginAsAlice();
+
+    const stateMod = await import('../../public/js/modules/state.js');
+    expect(stateMod.FEATURE_FLAGS.optimisticSend).toBe(true);
+
+    const input = document.getElementById('global-input');
+    input.value = 'Hello optimistic';
+    input.dispatchEvent(new Event('input'));
+    document.getElementById('send-global').disabled = false;
+    click('send-global');
+    await Promise.resolve();
+
+    expect(mockEmitSendGlobalMessage).toHaveBeenCalled();
+    expect(document.querySelector('#global-messages .message.pending')).not.toBeNull();
+
+    jest.advanceTimersByTime(31000);
+    await Promise.resolve();
+
+    expect(document.querySelector('#global-messages .message.pending')).toBeNull();
+    expect(document.getElementById('global-messages').textContent).toContain('Message failed to send');
+    expect(stateMod.isSendingGlobal()).toBe(false);
+  });
+});
+
+describe('app.js voice message path', () => {
+  test('voice preview send uploads attachment and emits global message', async () => {
+    global.URL.createObjectURL = jest.fn(() => 'blob:mock-voice-url');
+    global.URL.revokeObjectURL = jest.fn();
+
+    await bootApp();
+    await loginAsAlice();
+
+    const blob = new Blob(['audio'], { type: 'audio/webm' });
+    mockRecorderGetState.mockReturnValue('idle');
+    mockUploadAttachment.mockResolvedValue({
+      type: 'audio',
+      url: 'https://cdn.example.com/voice.webm',
+      filename: 'voice.webm',
+      mimetype: 'audio/webm',
+      size: 512,
+    });
+
+    mockRecorderStartRecording.mockImplementation((onReady) => {
+      onReady(blob, 'voice.webm', 'audio/webm');
+    });
+
+    click('global-voice-btn');
+    await Promise.resolve();
+
+    const sendBtn = document.querySelector('#global-voice-preview .voice-preview-send');
+    expect(sendBtn).not.toBeNull();
+    sendBtn.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mockUploadAttachment).toHaveBeenCalled();
+    expect(mockEmitSendGlobalMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sender: 'alice',
+        attachment: expect.objectContaining({ type: 'audio' }),
+      })
+    );
   });
 });

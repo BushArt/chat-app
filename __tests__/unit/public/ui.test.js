@@ -3,75 +3,18 @@
  */
 import * as ui from '../../../public/js/modules/ui.js';
 import * as state from '../../../public/js/modules/state.js';
-import * as utils from '../../../public/js/modules/utils.js';
+import { getAppHtml } from '../../client/helpers/domScaffold.js';
 
-// ---- HTML scaffold matching public/index.html ----
-const HTML = `
-<div id="auth-screen">
-  <h1>Chat App</h1>
-  <input type="text" id="username-input" />
-  <input type="password" id="password-input" />
-  <button id="btn-login">Log In</button>
-  <button id="btn-register">Create Account</button>
-  <p id="auth-error" role="alert" aria-live="polite"></p>
-</div>
-<div id="chat-screen" class="hidden">
-  <div id="chat-header">
-    <span id="logged-in-as">Logged in as:</span>
-    <div id="header-actions">
-      <button id="btn-time-format">Time: Relative</button>
-      <button id="btn-theme-toggle">Theme</button>
-      <button id="btn-logout">Log Out</button>
-    </div>
-  </div>
-  <div id="connection-banner" class="hidden" role="status"></div>
-  <div id="main-layout">
-    <div id="sidebar">
-      <div id="sidebar-title">Online Users</div>
-      <div id="online-list" role="listbox"></div>
-    </div>
-    <div id="chat-area">
-      <div id="tabs" role="tablist">
-        <button class="tab active" id="tab-global" role="tab" aria-controls="panel-global" aria-selected="true">
-          Global <span id="global-tab-badge"></span>
-        </button>
-        <button class="tab" id="tab-private" role="tab" aria-controls="panel-private" aria-selected="false">
-          Private <span id="private-tab-badge"></span>
-        </button>
-      </div>
-      <section class="tab-panel" id="panel-global" role="tabpanel" aria-labelledby="tab-global">
-        <div class="messages" id="global-messages"></div>
-        <div class="typing-indicator" id="global-typing"></div>
-        <div class="input-area">
-          <textarea id="global-input" rows="1"></textarea>
-          <div class="char-counter" id="global-char-counter"></div>
-          <button id="send-global" class="send-btn" disabled>Send</button>
-        </div>
-      </section>
-      <section class="tab-panel hidden" id="panel-private" role="tabpanel" aria-labelledby="tab-private">
-        <div id="recipient-bar">
-          <input type="text" id="recipient-input" />
-          <button id="btn-open-chat">Open</button>
-        </div>
-        <div class="messages" id="private-messages"></div>
-        <div class="typing-indicator" id="private-typing"></div>
-        <div class="input-area">
-          <textarea id="private-input" rows="1"></textarea>
-          <div class="char-counter" id="private-char-counter"></div>
-          <button id="send-private" class="send-btn" disabled>Send</button>
-        </div>
-      </section>
-    </div>
-  </div>
-</div>
-`;
+beforeAll(() => {
+  global.URL.createObjectURL = jest.fn(() => 'blob:mock-url');
+  global.URL.revokeObjectURL = jest.fn();
+});
 
 beforeEach(() => {
-  document.body.innerHTML = HTML;
+  document.body.innerHTML = getAppHtml();
   localStorage.clear();
   state.resetAllState();
   jest.restoreAllMocks();
-  // Re-init dom before each test
   ui.initDom();
 });
 
@@ -113,6 +56,11 @@ describe('initDom / getDom', () => {
     expect(dom.btnRegister).toBe(document.getElementById('btn-register'));
     expect(dom.btnLogout).toBe(document.getElementById('btn-logout'));
     expect(dom.btnOpenChat).toBe(document.getElementById('btn-open-chat'));
+    expect(dom.profilePanel).toBe(document.getElementById('profile-panel'));
+    expect(dom.btnEditProfile).toBe(document.getElementById('btn-edit-profile'));
+    expect(dom.editDisplayName).toBe(document.getElementById('edit-display-name'));
+    expect(dom.globalVoiceBtn).toBe(document.getElementById('global-voice-btn'));
+    expect(dom.globalAttachPreview).toBe(document.getElementById('global-attachment-preview'));
   });
 
   test('getDom returns the same cached dom', () => {
@@ -593,5 +541,151 @@ describe('refreshVisibleMeta', () => {
     
     // Should now show exact time
     expect(meta.textContent).toContain('alice ·');
+  });
+});
+
+describe('profile panel', () => {
+  beforeEach(() => {
+    state.setCurrentUser('alice');
+    state.setProfileFromResponse({
+      username: 'alice',
+      displayName: 'Alice Chen',
+      bio: 'Hello world',
+      status: 'away',
+      avatarUrl: null,
+    });
+  });
+
+  test('showProfileEditor opens panel and populates from state', () => {
+    ui.showProfileEditor();
+    expect(document.getElementById('profile-panel').classList.contains('hidden')).toBe(false);
+    expect(document.getElementById('edit-display-name').value).toBe('Alice Chen');
+    expect(document.getElementById('edit-bio').value).toBe('Hello world');
+    expect(document.getElementById('edit-status').value).toBe('away');
+  });
+
+  test('showProfileEditor uses pending edits when present', () => {
+    state.setPendingProfileEdits({
+      displayName: 'Pending Name',
+      bio: 'Pending bio',
+      status: 'busy',
+      avatarFile: null,
+    });
+    ui.showProfileEditor();
+    expect(document.getElementById('edit-display-name').value).toBe('Pending Name');
+    expect(document.getElementById('edit-bio').value).toBe('Pending bio');
+    expect(document.getElementById('edit-status').value).toBe('busy');
+  });
+
+  test('hideProfileEditor closes panel and clears avatar file input', () => {
+    ui.showProfileEditor();
+    ui.hideProfileEditor();
+    expect(document.getElementById('profile-panel').classList.contains('hidden')).toBe(true);
+    expect(document.getElementById('avatar-file-input').value).toBe('');
+  });
+
+  test('refreshProfileHeader updates summary fields', () => {
+    ui.refreshProfileHeader();
+    expect(document.getElementById('profile-display-name').textContent).toBe('Alice Chen');
+    expect(document.getElementById('profile-detail').textContent).toContain('@alice');
+    expect(document.getElementById('profile-detail').textContent).toContain('Hello world');
+  });
+
+  test('showAvatarPreview renders image for file input', () => {
+    const file = new File(['img'], 'avatar.png', { type: 'image/png' });
+    ui.showAvatarPreview(file);
+    const img = document.getElementById('editor-avatar-preview').querySelector('img.avatar-img');
+    expect(img).not.toBeNull();
+    expect(img.src).toBe('blob:mock-url');
+  });
+
+  test('showAvatarPreview resets to initial letter when file is null', () => {
+    ui.showAvatarPreview(null);
+    const initial = document.getElementById('editor-avatar-preview').querySelector('.avatar-initial');
+    expect(initial).not.toBeNull();
+    expect(initial.textContent).toBe('A');
+  });
+
+  test('resetChatUi hides profile panel', () => {
+    ui.showProfileEditor();
+    ui.resetChatUi();
+    expect(document.getElementById('profile-panel').classList.contains('hidden')).toBe(true);
+  });
+});
+
+describe('attachment preview', () => {
+  test('showAttachmentPreview displays filename and remove button', () => {
+    ui.showAttachmentPreview('global', { type: 'image', filename: 'photo.png' });
+    const preview = document.getElementById('global-attachment-preview');
+    expect(preview.classList.contains('hidden')).toBe(false);
+    expect(preview.textContent).toContain('photo.png');
+    expect(preview.querySelector('.attach-preview-remove')).not.toBeNull();
+  });
+
+  test('clearAttachmentPreview hides preview and clears pending attachment', () => {
+    state.setPendingAttachment({ type: 'file', filename: 'doc.pdf' });
+    ui.showAttachmentPreview('global', { type: 'file', filename: 'doc.pdf' });
+    ui.clearAttachmentPreview('global');
+    expect(document.getElementById('global-attachment-preview').classList.contains('hidden')).toBe(true);
+    expect(state.getPendingAttachment()).toBeNull();
+  });
+});
+
+describe('voice recording UI', () => {
+  test('updateVoiceButton sets recording state on global button', () => {
+    ui.updateVoiceButton('global', 'recording');
+    const btn = document.getElementById('global-voice-btn');
+    expect(btn.classList.contains('voice-recording')).toBe(true);
+  });
+
+  test('updateVoiceButton sets sending state on private button', () => {
+    ui.updateVoiceButton('private', 'sending');
+    const btn = document.getElementById('private-voice-btn');
+    expect(btn.classList.contains('voice-sending')).toBe(true);
+  });
+
+  test('updateVoiceButton hides button in preview state', () => {
+    ui.updateVoiceButton('global', 'preview');
+    expect(document.getElementById('global-voice-btn').classList.contains('hidden')).toBe(true);
+  });
+
+  test('showVoicePreview renders audio player and action buttons', () => {
+    const blob = new Blob(['audio'], { type: 'audio/webm' });
+    const onSend = jest.fn();
+    const onDiscard = jest.fn();
+    ui.showVoicePreview('global', blob, onSend, onDiscard);
+
+    const preview = document.getElementById('global-voice-preview');
+    expect(preview.classList.contains('hidden')).toBe(false);
+    expect(preview.querySelector('audio')).not.toBeNull();
+    preview.querySelector('.voice-preview-send').click();
+    expect(onSend).toHaveBeenCalled();
+  });
+
+  test('clearVoicePreview hides panel and restores voice button', () => {
+    ui.updateVoiceButton('global', 'preview');
+    ui.clearVoicePreview('global');
+    expect(document.getElementById('global-voice-preview').classList.contains('hidden')).toBe(true);
+    expect(document.getElementById('global-voice-btn').classList.contains('hidden')).toBe(false);
+  });
+});
+
+describe('pagination helpers', () => {
+  test('setLoading toggles loading dataset on container', () => {
+    ui.setLoading('global-messages', true);
+    expect(document.getElementById('global-messages').dataset.loading).toBe('true');
+    ui.setLoading('global-messages', false);
+    expect(document.getElementById('global-messages').dataset.loading).toBe('false');
+  });
+
+  test('setHasMore stores hasMore flag on container', () => {
+    ui.setHasMore('global-messages', true);
+    expect(document.getElementById('global-messages').dataset.hasMore).toBe('true');
+  });
+
+  test('updateLoadMoreButton adds load-more control when hasMore', () => {
+    ui.updateLoadMoreButton('global-messages', true, jest.fn());
+    const container = document.getElementById('global-messages');
+    expect(container.querySelector('.load-more-btn')).not.toBeNull();
   });
 });

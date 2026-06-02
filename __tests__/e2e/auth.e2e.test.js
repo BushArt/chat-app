@@ -26,7 +26,13 @@ describe('auth end-to-end', () => {
       .send({ username: 'alice', password: 'password123' });
 
     expect(registerResponse.status).toBe(201);
-    expect(registerResponse.body).toHaveProperty('message');
+    expect(registerResponse.body).toHaveProperty('token');
+    expect(registerResponse.body).toHaveProperty('username', 'alice');
+    expect(registerResponse.body).toHaveProperty('displayName');
+    expect(registerResponse.body).toHaveProperty('bio');
+    expect(registerResponse.body).toHaveProperty('status');
+    expect(registerResponse.body).toHaveProperty('avatarUrl');
+    expect(registerResponse.body).toHaveProperty('createdAt');
 
     const loginResponse = await api
       .post('/auth/login')
@@ -63,6 +69,7 @@ describe('auth end-to-end', () => {
       .set('Authorization', `Bearer ${token}`);
 
     expect(historyResponse.status).toBe(200);
-    expect(Array.isArray(historyResponse.body)).toBe(true);
+    expect(historyResponse.body).toHaveProperty('messages');
+    expect(Array.isArray(historyResponse.body.messages)).toBe(true);
   });
 });

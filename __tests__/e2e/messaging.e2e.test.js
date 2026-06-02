@@ -88,7 +88,7 @@ describe('global messaging end-to-end', () => {
       .set('Authorization', `Bearer ${aliceToken}`);
 
     expect(historyResponse.status).toBe(200);
-    expect(historyResponse.body.some((msg) => msg.clientId === 'global-c1')).toBe(true);
+    expect(historyResponse.body.messages.some((msg) => msg.clientId === 'global-c1')).toBe(true);
   });
 });
 
@@ -138,7 +138,7 @@ describe('private messaging end-to-end', () => {
       .set('Authorization', `Bearer ${aliceToken}`);
 
     expect(historyResponse.status).toBe(200);
-    expect(historyResponse.body.some((msg) => msg.clientId === 'private-c1')).toBe(true);
+    expect(historyResponse.body.messages.some((msg) => msg.clientId === 'private-c1')).toBe(true);
   });
 });
 
@@ -161,7 +161,7 @@ describe('history limits end-to-end', () => {
       .set('Authorization', `Bearer ${aliceToken}`);
 
     expect(historyResponse.status).toBe(200);
-    expect(historyResponse.body).toHaveLength(100);
+    expect(historyResponse.body.messages).toHaveLength(100);
   });
 
   test('returns only the most recent 50 DM messages', async () => {
@@ -184,7 +184,7 @@ describe('history limits end-to-end', () => {
       .set('Authorization', `Bearer ${aliceToken}`);
 
     expect(historyResponse.status).toBe(200);
-    expect(historyResponse.body).toHaveLength(50);
+    expect(historyResponse.body.messages).toHaveLength(50);
   });
 });
 
@@ -306,7 +306,11 @@ describe('presence end-to-end', () => {
     const onlineUsers = await onlineUsersPromise;
 
     expect(Array.isArray(onlineUsers)).toBe(true);
-    expect(onlineUsers).toContain('alice');
+    // Phase 1: online_users returns array of profile objects, not strings
+    const aliceEntry = onlineUsers.find((u) => u.username === 'alice');
+    expect(aliceEntry).toBeDefined();
+    expect(aliceEntry.displayName).toBe('alice');
+    expect(aliceEntry.status).toBe('online');
   });
 
   test('removes username from online_users after disconnect', async () => {

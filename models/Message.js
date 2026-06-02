@@ -22,7 +22,10 @@ const messageSchema = new mongoose.Schema({
   },
   message: {
     type: String,
-    required: true
+    required: function () {
+      // Allow attachment-only messages (empty text when attachment is present)
+      return !this.attachment;
+    }
   },
   isGlobal: {
     type: Boolean,

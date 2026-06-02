@@ -72,4 +72,71 @@ describe('auth end-to-end', () => {
     expect(historyResponse.body).toHaveProperty('messages');
     expect(Array.isArray(historyResponse.body.messages)).toBe(true);
   });
+
+  test('GET /auth/me returns correct profile after registration', async () => {
+    await api.post('/auth/register').send({ username: 'alice', password: 'password123' });
+    const loginResponse = await api.post('/auth/login').send({ username: 'alice', password: 'password123' });
+    const token = loginResponse.body.token;
+
+    const meResponse = await api
+      .get('/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(meResponse.status).toBe(200);
+    expect(meResponse.body).toHaveProperty('username', 'alice');
+    expect(meResponse.body).toHaveProperty('displayName', 'alice');
+    expect(meResponse.body).toHaveProperty('bio', '');
+    expect(meResponse.body).toHaveProperty('status', 'online');
+    expect(meResponse.body).toHaveProperty('createdAt');
+    expect(meResponse.body).not.toHaveProperty('password');
+    expect(meResponse.body).not.toHaveProperty('hash');
+  });
+
+  test('GET /auth/me returns 401 without JWT', async () => {
+    const meResponse = await api.get('/auth/me');
+    expect(meResponse.status).toBe(401);
+  });
+
+  test('PUT /auth/profile persists changes to MongoDB', async () => {
+    await api.post('/auth/register').send({ username: 'alice', password: 'password123' });
+    const loginResponse = await api.post('/auth/login').send({ username: 'alice', password: 'password123' });
+    const token = loginResponse.body.token;
+
+    const updateResponse = await api
+      .put('/auth/profile')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ displayName: 'Alice Chen', bio: 'Hello world' });
+
+    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.body).toHaveProperty('displayName', 'Alice Chen');
+    expect(updateResponse.body).toHaveProperty('bio', 'Hello world');
+
+    const meResponse = await api
+      .get('/auth/me')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(meResponse.status).toBe(200);
+    expect(meResponse.body.displayName).toBe('Alice Chen');
+    expect(meResponse.body.bio).toBe('Hello world');
+  });
+
+  test('PUT /auth/profile partial update does not overwrite other fields', async () => {
+    await api.post('/auth/register').send({ username: 'bob', password: 'password123' });
+    const loginResponse = await api.post('/auth/login').send({ username: 'bob', password: 'password123' });
+    const token = loginResponse.body.token;
+
+    await api
+      .put('/auth/profile')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ displayName: 'Bob Smith' });
+
+    const bioUpdate = await api
+      .put('/auth/profile')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ bio: 'Just a bio' });
+
+    expect(bioUpdate.status).toBe(200);
+    expect(bioUpdate.body.displayName).toBe('Bob Smith');
+    expect(bioUpdate.body.bio).toBe('Just a bio');
+  });
 });

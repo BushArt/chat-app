@@ -82,6 +82,7 @@ describe('global messaging end-to-end', () => {
 
     const persisted = await Message.findOne({ clientId: 'global-c1', sender: 'alice', isGlobal: true });
     expect(persisted).not.toBeNull();
+    expect(persisted.senderDisplayName).toBe('alice');
 
     const historyResponse = await api
       .get('/messages/global')
@@ -89,6 +90,8 @@ describe('global messaging end-to-end', () => {
 
     expect(historyResponse.status).toBe(200);
     expect(historyResponse.body.messages.some((msg) => msg.clientId === 'global-c1')).toBe(true);
+    const historyMsg = historyResponse.body.messages.find((msg) => msg.clientId === 'global-c1');
+    expect(historyMsg).toHaveProperty('senderDisplayName', 'alice');
   });
 });
 
@@ -245,6 +248,18 @@ describe('attachment upload and send end-to-end', () => {
     expect(persisted.attachment.url).toBe(attachment.url);
     expect(persisted.attachment.type).toBe('image');
     expect(persisted.attachment.filename).toBe('photo.png');
+
+    // Verify attachment fields appear in history response
+    const historyResponse = await api
+      .get('/messages/global')
+      .set('Authorization', `Bearer ${aliceToken}`);
+
+    expect(historyResponse.status).toBe(200);
+    const historyMsg = historyResponse.body.messages.find((msg) => msg.clientId === 'e2e-attach-c1');
+    expect(historyMsg).toBeDefined();
+    expect(historyMsg).toHaveProperty('attachment');
+    expect(historyMsg.attachment).toHaveProperty('url', attachment.url);
+    expect(historyMsg.attachment).toHaveProperty('type', 'image');
   });
 
   test('attachment is persisted with correct metadata', async () => {

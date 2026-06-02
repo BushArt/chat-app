@@ -624,4 +624,6 @@ function init() {
   restoreSession();
 }
 
+export { init };
+
 document.addEventListener("DOMContentLoaded", init);

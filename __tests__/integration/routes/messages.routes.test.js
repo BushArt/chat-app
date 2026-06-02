@@ -345,7 +345,7 @@ describe("POST /messages/upload", () => {
   });
 
   // ── Authorization ───────────────────────────────────────────────
-  test("returns 403 when user is not the receiver in a private upload", async () => {
+  test("returns 400 when receiver is not a participant of the room", async () => {
     jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
 
     const app = createApp();
@@ -356,12 +356,42 @@ describe("POST /messages/upload", () => {
       .field("isGlobal", "false")
       .attach("file", Buffer.from("fake-image"), { filename: "test.png", contentType: "image/png" })
       .set("Authorization", "Bearer valid-token");
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("invalid_receiver");
+  });
+
+  test("returns 403 when user is not a participant of the room", async () => {
+    jwt.verify.mockReturnValue({ id: "u1", username: "mallory" });
+
+    const app = createApp();
+    const res = await request(app)
+      .post("/messages/upload")
+      .field("room", "alice:bob")
+      .field("receiver", "bob")
+      .field("isGlobal", "false")
+      .attach("file", Buffer.from("fake-image"), { filename: "test.png", contentType: "image/png" })
+      .set("Authorization", "Bearer valid-token");
     expect(res.status).toBe(403);
     expect(res.body.code).toBe("forbidden_upload");
   });
 
-  test("allows upload when user is the receiver", async () => {
+  test("returns 400 when user uploads a file to themselves", async () => {
     jwt.verify.mockReturnValue({ id: "u1", username: "bob" });
+
+    const app = createApp();
+    const res = await request(app)
+      .post("/messages/upload")
+      .field("room", "alice:bob")
+      .field("receiver", "bob")
+      .field("isGlobal", "false")
+      .attach("file", Buffer.from("fake-image"), { filename: "test.png", contentType: "image/png" })
+      .set("Authorization", "Bearer valid-token");
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("self_upload");
+  });
+
+  test("allows upload when user is a room participant sending to the other participant", async () => {
+    jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
 
     const app = createApp();
     const res = await request(app)

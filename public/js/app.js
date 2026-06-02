@@ -267,7 +267,7 @@ function setupFilePicker(btn, fileInput, channel) {
       
     } catch (err) {
       ui.appendSystem(channel === "global" ? "global-messages" : "private-messages",
-        "Upload failed: " + (err.message || "Unknown error"));
+        err.message || "Upload failed.");
     } finally {
       btn.disabled = false;
       btn.textContent = originalText;
@@ -429,7 +429,8 @@ function openProfileEditor() {
   state.setPendingProfileEdits(state.getPendingProfileEdits() || null);
   ui.refreshProfileHeader();
   ui.showProfileEditor();
-  selectedAvatarFile = null;
+  // Restore any previously staged avatar file so it isn't lost on reopen
+  selectedAvatarFile = state.getPendingProfileEdits()?.avatarFile ?? null;
 }
 
 function closeProfileEditor() {
@@ -527,7 +528,7 @@ function setupVoiceRecording(channel) {
             } catch (err) {
               ui.appendSystem(
                 channel === 'global' ? 'global-messages' : 'private-messages',
-                'Voice upload failed: ' + (err.message || 'Unknown error')
+                err.message || 'Voice upload failed.'
               );
               recorder.setPreview(); // Allow retry
             }

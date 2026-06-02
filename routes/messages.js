@@ -150,8 +150,27 @@ router.post('/upload', verifyToken, uploadRateLimitMiddleware, attachmentUpload.
       if (!receiver) {
         return next(new HttpError('Receiver is required for private messages.', 400, 'receiver_required'));
       }
-      if (req.user.username !== receiver) {
+
+      // Parse room participants from the "userA:userB" format
+      const participants = room.split(':');
+      if (participants.length !== 2) {
+        return next(new HttpError('Invalid room format.', 400, 'invalid_room'));
+      }
+      const [userA, userB] = participants;
+
+      // The authenticated user must be a participant of this room
+      if (req.user.username !== userA && req.user.username !== userB) {
         return next(new HttpError('Forbidden', 403, 'forbidden_upload'));
+      }
+
+      // The receiver must be a participant of this room
+      if (receiver !== userA && receiver !== userB) {
+        return next(new HttpError('Receiver is not a participant of this room.', 400, 'invalid_receiver'));
+      }
+
+      // Cannot upload files to yourself
+      if (req.user.username === receiver) {
+        return next(new HttpError('Cannot upload files to yourself.', 400, 'self_upload'));
       }
     }
 

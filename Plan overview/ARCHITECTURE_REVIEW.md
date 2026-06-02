@@ -55,7 +55,8 @@ This repository is a Node.js chat application using Express, Socket.IO, MongoDB,
 - `middleware/security.js` — applies security headers (helmet, CSP, CORS, HSTS) for each response.
 - `middleware/rateLimiter.js` — generic in-memory rate limiter factory used by APIs and socket handlers.
 - `middleware/auth.js` — JWT verification middleware. Validates Bearer token, checks `lastLogout` timestamp for token revocation. Used on all protected routes.
-- `middleware/upload.js` — multer configuration with memory storage. Exports `avatarUpload` (5MB, images only) and `attachmentUpload` (25MB, images/PDF/audio/text/zip).
+- `middleware/upload.js` — multer configuration with memory storage. Exports `avatarUpload` (5MB, images only), `attachmentUpload` (25MB, images/PDF/audio/text/zip/video), and `normalizeMime()` (strips codec parameters e.g. `audio/webm;codecs=opus`).
+</replace_in_file>
 - `middleware/errorHandler.js` — global Express error handler. Converts `HttpError` instances to JSON responses, handles multer errors, and logs unexpected errors.
 
 ### Auth and user flows

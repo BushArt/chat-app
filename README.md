@@ -149,6 +149,11 @@ TEST_MONGO_URI=mongodb+srv://yourname:yourpassword@cluster0.xxxxx.mongodb.net/ch
 node server.js
 ```
 
+> **Tip (Windows only):** If you run into Cloudinary TLS certificate errors (`unable to verify the first certificate`), start the server with:
+> ```bash
+> NODE_OPTIONS=--use-system-ca node server.js
+> ```
+
 > **Tip:** Install `nodemon` for auto-restart on file changes during development:
 > ```bash
 > npm install -g nodemon
@@ -284,7 +289,7 @@ Socket errors are emitted as an `error_message` event with the same payload shap
 | `global_messages_fetch_failed` | Could not retrieve global chat history | 500 |
 | `private_messages_fetch_failed` | Could not retrieve private message history | 500 |
 | `missing_peer_or_room` | Sync request missing required fields | 400 |
-| `invalid_room` | Room name does not follow `user1_user2` format | 400 |
+| `invalid_room` | Sync: room name does not follow `user1_user2` format | 400 |
 | `invalid_peer` | Cannot sync private messages with yourself | 400 |
 | `global_message_failed` | Server error while sending a global message | 500 |
 | `private_message_failed` | Server error while sending a private message | 500 |
@@ -301,7 +306,10 @@ Socket errors are emitted as an `error_message` event with the same payload shap
 | `no_file` | Upload request with no file attached | 400 |
 | `room_required` | Upload request missing room field | 400 |
 | `receiver_required` | Private upload missing receiver | 400 |
-| `forbidden_upload` | User not authorized for upload | 403 |
+| `invalid_room` | Upload: room name does not follow `userA:userB` format | 400 |
+| `forbidden_upload` | Uploading user is not a participant of the room | 403 |
+| `invalid_receiver` | Receiver is not a participant of the room | 400 |
+| `self_upload` | User attempted to upload a file to themselves | 400 |
 | `voice_size_exceeded` | Audio file exceeds 10MB limit | 400 |
 | `upload_failed` | Cloudinary file upload failed | 500 |
 | `upload_error` | Server error during upload | 500 |

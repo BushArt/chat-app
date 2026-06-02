@@ -1,6 +1,7 @@
 /* eslint-env browser */
 import * as state from './state.js';
 import * as utils from './utils.js';
+import * as recorder from './recorder.js';
 
 /* global URL */
 let dom;
@@ -438,6 +439,14 @@ export function switchTab(tab) {
       dom.badgePrivate.style.display = "none";
       dom.badgePrivate.textContent = "";
     }
+  }
+
+  // Restore voice button visibility when switching to a tab,
+  // in case it was hidden by a preview state on the other channel.
+  const recorderState = recorder.getState();
+  const btn = isGlobal ? dom.globalVoiceBtn : dom.privateVoiceBtn;
+  if (btn && recorderState !== 'preview') {
+    btn.classList.remove('hidden');
   }
 }
 

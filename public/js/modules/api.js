@@ -58,6 +58,14 @@ const ALLOWED_MIME_TYPES = new Set([
 const MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024; // 25 MB
 
 /**
+ * Normalize MIME type by stripping codec parameters.
+ * e.g. 'audio/webm;codecs=opus' → 'audio/webm'
+ */
+function normalizeMime(type) {
+  return type.split(';')[0].trim().toLowerCase();
+}
+
+/**
  * Upload a file attachment. Returns attachment metadata on success.
  * @param {File} file
  * @param {string|null} room - private room ID (null for global)
@@ -66,8 +74,8 @@ const MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024; // 25 MB
  * @returns {Promise<{type: string, filename: string, url: string, mimetype: string, size: number}>}
  */
 export async function uploadAttachment(file, room, receiver, isGlobal) {
-  // Client-side pre-validation
-  if (!ALLOWED_MIME_TYPES.has(file.type)) {
+  // Client-side pre-validation (normalize to handle codec parameters like audio/webm;codecs=opus)
+  if (!ALLOWED_MIME_TYPES.has(normalizeMime(file.type))) {
     throw new Error(`File type "${file.type}" is not supported.`);
   }
   if (file.size > MAX_ATTACHMENT_SIZE) {

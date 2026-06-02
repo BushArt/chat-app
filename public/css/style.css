@@ -934,6 +934,69 @@ textarea:focus-visible { outline: 0; box-shadow: var(--focus); }
   color: var(--danger);
 }
 
+/* ── Voice Preview ── */
+.voice-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  margin-bottom: 4px;
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.voice-preview-player {
+  flex: 1;
+  height: 36px;
+  min-width: 0;
+}
+
+.voice-preview-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.voice-preview-send {
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--primary);
+  color: #fff;
+  border-radius: var(--radius-sm);
+}
+
+.voice-preview-send:hover {
+  background: var(--primary-hover);
+}
+
+.voice-preview-discard {
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--panel);
+  color: var(--text-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.voice-preview-discard:hover {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+
+.profile-error {
+  color: var(--danger);
+  font-size: 12px;
+  text-align: center;
+  min-height: 16px;
+}
+
 /* Attachment inside message bubble */
 .attachment-container {
   margin-top: 6px;

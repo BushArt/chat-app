@@ -26,6 +26,14 @@ const ALLOWED_ATTACHMENT_TYPES = new Set([
 ]);
 const MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024; // 25 MB
 
+/**
+ * Normalize MIME type by stripping codec parameters.
+ * e.g. 'audio/webm;codecs=opus' → 'audio/webm'
+ */
+function normalizeMime(type) {
+  return type.split(';')[0].trim().toLowerCase();
+}
+
 // ---- Auth functions ----
 async function register() {
   const username = dom.usernameInput.value.trim();
@@ -221,8 +229,8 @@ function setupFilePicker(btn, fileInput, channel) {
     const file = fileInput.files[0];
     if (!file) return;
 
-    // Client-side pre-validation
-    if (!ALLOWED_ATTACHMENT_TYPES.has(file.type)) {
+    // Client-side pre-validation (normalize to handle codec parameters like audio/webm;codecs=opus)
+    if (!ALLOWED_ATTACHMENT_TYPES.has(normalizeMime(file.type))) {
       ui.appendSystem(channel === "global" ? "global-messages" : "private-messages",
         `File type "${file.type}" is not supported.`);
       fileInput.value = "";
@@ -454,7 +462,16 @@ async function saveProfile() {
     ui.refreshProfileHeader();
     closeProfileEditor();
   } catch (err) {
-    ui.showAuthError(err.message || "Profile update failed.");
+    // Show error in the profile panel instead of the hidden auth screen
+    let errorEl = dom.profilePanel.querySelector('.profile-error');
+    if (!errorEl) {
+      errorEl = document.createElement('p');
+      errorEl.className = 'profile-error';
+      errorEl.setAttribute('role', 'alert');
+      dom.profilePanel.insertBefore(errorEl, dom.profilePanel.querySelector('.profile-actions'));
+    }
+    errorEl.textContent = err.message || "Profile update failed.";
+    setTimeout(() => { errorEl.textContent = ''; }, 5000);
   } finally {
     dom.btnSaveProfile.disabled = false;
     dom.btnSaveProfile.textContent = 'Save';

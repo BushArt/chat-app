@@ -1,9 +1,14 @@
 const http = require("http");
-const express = require("express");
 const { Server } = require("socket.io");
-const ioClient = require("socket.io-client");
 const jwt = require("jsonwebtoken");
 const state = require("../../../sockets/state");
+const {
+  waitForEvent,
+  connectClient,
+  connectAndWait,
+  resetJwtVerifyDefault,
+  closeSocketServer,
+} = require("./socketTestHelpers");
 
 // Mock User model for JWT revocation checks and getOnlineList
 jest.mock("../../../models/User", () => ({
@@ -46,30 +51,6 @@ function createSocketServer() {
   return { server, io };
 }
 
-function connectClient(port, token) {
-  return ioClient(`http://localhost:${port}`, {
-    transports: ["websocket"],
-    forceNew: true,
-    auth: { token },
-  });
-}
-
-function waitForEvent(emitter, event, timeout = 3000) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`Timeout waiting for "${event}"`)), timeout);
-    emitter.once(event, (...args) => {
-      clearTimeout(timer);
-      resolve(args.length <= 1 ? args[0] : args);
-    });
-  });
-}
-
-async function connectAndWait(port, token) {
-  const client = connectClient(port, token);
-  await waitForEvent(client, "connect");
-  return client;
-}
-
 describe("Socket.IO connection – Phase 1 profile fields", () => {
   let server, io, port;
 
@@ -86,9 +67,8 @@ describe("Socket.IO connection – Phase 1 profile fields", () => {
     });
   });
 
-  afterAll(() => {
-    io?.close();
-    server?.close();
+  afterAll(async () => {
+    await closeSocketServer(io, server);
   });
 
   let clients = [];
@@ -97,30 +77,29 @@ describe("Socket.IO connection – Phase 1 profile fields", () => {
     state.onlineUsers.clear();
     state.typingTimeouts.clear();
     clients = [];
-    jwt.verify.mockClear();
-    jwt.verify.mockReturnValue({ id: "user1", username: "alice" });
+    resetJwtVerifyDefault(jwt);
     Message.mockClear();
 
     const User = require("../../../models/User");
-    User.findById.mockClear();
+    User.findById.mockReset();
     User.findById.mockReturnValue({
       select: jest.fn(() => ({
         lean: jest.fn().mockResolvedValue({ lastLogout: null })
       }))
     });
 
-    // Default: User.find returns enriched objects for getOnlineList()
     User.find.mockReset();
     User.find.mockResolvedValue([
       { username: "alice", displayName: "Alice", status: "online" },
     ]);
   });
 
-  afterEach(() => {
-    clients.forEach((c) => {
+  afterEach(async () => {
+    await Promise.all(clients.map((c) => new Promise((resolve) => {
       c.removeAllListeners();
       c.close();
-    });
+      setTimeout(resolve, 0);
+    })));
   });
 
   function track(client) {

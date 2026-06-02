@@ -1,8 +1,15 @@
 ﻿const http = require("http");
 const { Server } = require("socket.io");
-const ioClient = require("socket.io-client");
 const jwt = require("jsonwebtoken");
 const state = require("../../../sockets/state");
+const {
+  waitForEvent,
+  connectClient,
+  connectAndWait,
+  connectAndWaitOrError,
+  resetJwtVerifyDefault,
+  closeSocketServer,
+} = require("./socketTestHelpers");
 
 // Mock the User model for JWT revocation checks
 jest.mock("../../../models/User", () => ({
@@ -45,30 +52,6 @@ function createSocketServer() {
   return { server, io };
 }
 
-function connectClient(port, token) {
-  return ioClient(`http://localhost:${port}`, {
-    transports: ["websocket"],
-    forceNew: true,
-    auth: { token },
-  });
-}
-
-function waitForEvent(emitter, event, timeout = 3000) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`Timeout waiting for "${event}"`)), timeout);
-    emitter.once(event, (...args) => {
-      clearTimeout(timer);
-      resolve(args.length <= 1 ? args[0] : args);
-    });
-  });
-}
-
-async function connectAndWait(port, token) {
-  const client = connectClient(port, token);
-  await waitForEvent(client, "connect");
-  return client;
-}
-
 describe("Socket.IO integration", () => {
   let server, io, port;
 
@@ -85,9 +68,8 @@ describe("Socket.IO integration", () => {
     });
   });
 
-  afterAll(() => {
-    io?.close();
-    server?.close();
+  afterAll(async () => {
+    await closeSocketServer(io, server);
   });
 
   // Track clients created in each test for cleanup
@@ -97,13 +79,10 @@ describe("Socket.IO integration", () => {
     state.onlineUsers.clear();
     state.typingTimeouts.clear();
     clients = [];
-    // Clear call counts without resetting implementations
-    jwt.verify.mockClear();
-    jwt.verify.mockReturnValue({ id: "user1", username: "alice" });
+    resetJwtVerifyDefault(jwt);
     Message.mockClear();
-    // User mock chain for JWT revocation check: User.findById().select().lean()
     const User = require("../../../models/User");
-    User.findById.mockClear(); // Now this should work as User.findById is mocked
+    User.findById.mockReset();
     User.findById.mockReturnValue({
       select: jest.fn(() => ({
         lean: jest.fn().mockResolvedValue({ lastLogout: null })
@@ -111,11 +90,12 @@ describe("Socket.IO integration", () => {
     });
   });
 
-  afterEach(() => {
-    clients.forEach((c) => {
+  afterEach(async () => {
+    await Promise.all(clients.map((c) => new Promise((resolve) => {
       c.removeAllListeners();
       c.close();
-    });
+      setTimeout(resolve, 0);
+    })));
   });
 
   function track(client) {
@@ -147,8 +127,9 @@ describe("Socket.IO integration", () => {
 
     test("rejects connection when JWT is missing (no token)", async () => {
       const client = track(connectClient(port, undefined));
-      const err = await waitForEvent(client, "connect_error");
-      expect(err).toBeDefined();
+      const result = await connectAndWaitOrError(client);
+      expect(result.connected).toBe(false);
+      expect(result.error).toBeDefined();
     });
 
     test("rejects connection when jwt.verify throws (invalid token)", async () => {
@@ -157,8 +138,9 @@ describe("Socket.IO integration", () => {
       });
 
       const client = track(connectClient(port, "invalid-token"));
-      const err = await waitForEvent(client, "connect_error");
-      expect(err).toBeDefined();
+      const result = await connectAndWaitOrError(client);
+      expect(result.connected).toBe(false);
+      expect(result.error).toBeDefined();
     });
 
     test("rejects connection when jwt.verify throws (expired token)", async () => {
@@ -167,8 +149,9 @@ describe("Socket.IO integration", () => {
       });
 
       const client = track(connectClient(port, "expired-token"));
-      const err = await waitForEvent(client, "connect_error");
-      expect(err).toBeDefined();
+      const result = await connectAndWaitOrError(client);
+      expect(result.connected).toBe(false);
+      expect(result.error).toBeDefined();
     });
 
     test("server connection event does NOT fire for invalid tokens", async () => {
@@ -183,7 +166,8 @@ describe("Socket.IO integration", () => {
       io.on("connection", handler);
 
       const client = track(connectClient(port, "bad-token"));
-      await waitForEvent(client, "connect_error");
+      const result = await connectAndWaitOrError(client);
+      expect(result.connected).toBe(false);
       await new Promise((r) => setTimeout(r, 200));
 
       expect(connectionCount).toBe(0);

@@ -5,11 +5,11 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "jest --selectProjects server client",
+    "test": "jest --selectProjects server client && jest --selectProjects server-sockets --runInBand",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:e2e": "npx jest --selectProjects e2e --runInBand",
-    "test:ci": "jest --selectProjects server client --coverage --ci --reporters=default && npx jest --selectProjects e2e --runInBand --ci --reporters=default"
+    "test:ci": "jest --selectProjects server client --coverage --ci --reporters=default && jest --selectProjects server-sockets --runInBand --coverage --ci --reporters=default && npx jest --selectProjects e2e --runInBand --ci --reporters=default"
   },
   "jest": {
     "projects": [
@@ -18,11 +18,20 @@
         "testEnvironment": "node",
         "testMatch": [
           "**/__tests__/unit/**/*.test.js",
-          "**/__tests__/integration/**/*.test.js"
+          "**/__tests__/integration/routes/**/*.test.js"
         ],
         "testPathIgnorePatterns": [
           "/__tests__/unit/public/"
         ]
+      },
+      {
+        "displayName": "server-sockets",
+        "testEnvironment": "node",
+        "testMatch": [
+          "**/__tests__/integration/sockets/**/*.test.js"
+        ],
+        "maxWorkers": 1,
+        "forceExit": true
       },
       {
         "displayName": "client",

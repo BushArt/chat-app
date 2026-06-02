@@ -11,7 +11,7 @@
     "test:e2e": "npx jest --selectProjects e2e --runInBand",
     "test:regressions": "jest __tests__/client/visual.regressions.test.js __tests__/client/ui.behavior.test.js",
     "test:browser": "playwright test",
-    "test:ci": "jest --selectProjects server client --coverage --ci --reporters=default && jest --selectProjects server-sockets --runInBand --coverage --ci --reporters=default && npx jest --selectProjects e2e --runInBand --ci --reporters=default"
+    "test:ci": "jest --selectProjects server client --coverage --ci --reporters=default && jest --selectProjects server-sockets --runInBand --ci --reporters=default && npx jest --selectProjects e2e --runInBand --ci --reporters=default"
   },
   "jest": {
     "projects": [
@@ -68,7 +68,8 @@
       "public/js/modules/optimistic.js",
       "public/js/modules/ui.js",
       "public/js/modules/socket.js",
-      "public/js/modules/recorder.js"
+      "public/js/modules/recorder.js",
+      "public/js/app.js"
     ],
     "testTimeout": 10000,
     "coverageThreshold": {

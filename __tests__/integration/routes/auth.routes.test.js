@@ -445,7 +445,7 @@ describe("POST /auth/login", () => {
       .post("/auth/login")
       .send({ username: "alice", password: "password123" });
     expect(jwt.sign).toHaveBeenCalledWith(
-      { id: "user-id-123", username: "alice" },
+      { id: "user-id-123", username: "alice", loginAt: expect.any(Number) },
       expect.any(String),
       expect.objectContaining({ expiresIn: "24h" })
     );

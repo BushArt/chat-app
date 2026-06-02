@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { MongoMemoryServer } = require('mongodb-memory-server');
+const { getMemoryMongoUri } = require('../../helpers/memoryMongoServer');
 const request = require('supertest');
 const express = require('express');
 const cors = require('cors');
@@ -18,8 +18,6 @@ const errorHandler = require('../../../middleware/errorHandler');
 const User = require('../../../models/User');
 const authRoutes = require('../../../routes/auth');
 
-let mongoServer;
-
 function createApp() {
   const app = express();
   app.use(cors({ origin: '*' }));
@@ -35,17 +33,13 @@ async function registerUser(app, username, password = 'password123') {
 }
 
 beforeAll(async () => {
-  mongoServer = await MongoMemoryServer.create();
-  await mongoose.connect(mongoServer.getUri());
+  await mongoose.connect(await getMemoryMongoUri());
   process.env.JWT_SECRET = 'test-secret';
   process.env.BCRYPT_ROUNDS = '4';
 });
 
 afterAll(async () => {
   await mongoose.disconnect();
-  if (mongoServer) {
-    await mongoServer.stop();
-  }
 });
 
 beforeEach(async () => {

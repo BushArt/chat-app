@@ -34,6 +34,7 @@ const optimisticByChannel = { global: [], private: [] };
 const jumpButtons = {};
 const privateMessagesBuffer = new Map();
 const optimisticTimeouts = new Map();
+let pendingProfileEdits = null;
 
 // Getters
 export function getCurrentUser() { return currentUser; }
@@ -67,6 +68,10 @@ export function setTimeFormat(value) { timeFormat = value; }
 
 export function getPendingAttachment() { return pendingAttachment; }
 export function setPendingAttachment(value) { pendingAttachment = value; }
+
+export function getPendingProfileEdits() { return pendingProfileEdits; }
+export function setPendingProfileEdits(value) { pendingProfileEdits = value; }
+export function clearPendingProfileEdits() { pendingProfileEdits = null; }
 
 export function setCurrentDisplayName(value) { currentDisplayName = value; }
 export function setCurrentBio(value) { currentBio = value; }
@@ -227,4 +232,5 @@ export function resetAllState() {
   clearAllOptimisticTimeouts();
   Object.keys(jumpButtons).forEach(key => delete jumpButtons[key]);
   pendingAttachment = null;
+  pendingProfileEdits = null;
 }

@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Mini Test</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<h1>Mini Test</h1>
+<div id="auth-screen">
+  <input id="username-input"><input id="password-input" type="password">
+  <button id="btn-login">Login</button><button id="btn-register">Register</button>
+  <p id="auth-error"></p>
+</div>
+<div id="chat-screen" class="hidden">
+  <div id="chat-header">
+    <span id="logged-in-as"></span>
+    <div id="header-actions">
+      <button id="btn-time-format">Time</button>
+      <button id="btn-theme-toggle">Theme</button>
+      <button id="btn-edit-profile">Edit Profile</button>
+      <button id="btn-logout">Logout</button>
+    </div>
+  </div>
+  <div id="connection-banner" class="hidden"></div>
+  <div id="profile-panel" class="hidden">
+    <div class="profile-header">
+      <span id="profile-avatar-preview" class="avatar"></span>
+      <div class="profile-info">
+        <div class="profile-name" id="profile-display-name"></div>
+        <div class="profile-detail" id="profile-detail"></div>
+      </div>
+    </div>
+    <div class="profile-field">
+      <label for="edit-display-name">Display Name</label>
+      <input id="edit-display-name" maxlength="50">
+    </div>
+    <div class="profile-field">
+      <label for="edit-bio">Bio</label>
+      <textarea id="edit-bio" maxlength="160" rows="2"></textarea>
+    </div>
+    <div class="profile-field">
+      <label for="edit-status">Status</label>
+      <select id="edit-status">
+        <option value="online">Online</option>
+        <option value="away">Away</option>
+        <option value="busy">Busy</option>
+      </select>
+    </div>
+    <div class="avatar-upload-wrapper">
+      <span id="editor-avatar-preview" class="avatar"></span>
+      <button id="btn-upload-avatar" type="button">Change Photo</button>
+      <input id="avatar-file-input" type="file" accept="image/*" class="hidden">
+    </div>
+    <div class="profile-actions">
+      <button id="btn-save-profile" class="btn-save">Save</button>
+      <button id="btn-cancel-profile" class="btn-cancel">Cancel</button>
+    </div>
+  </div>
+  <div id="main-layout">
+    <div id="sidebar"><div id="online-list"></div></div>
+    <div id="chat-area">
+      <div id="tabs">
+        <button id="tab-global" class="tab active">Global</button>
+        <button id="tab-private" class="tab">Private</button>
+      </div>
+      <section class="tab-panel" id="panel-global">
+        <div class="messages" id="global-messages"></div>
+        <div class="typing-indicator" id="global-typing"></div>
+        <div class="input-area">
+          <div class="input-toolbar">
+            <button id="global-file-btn" class="file-attach-btn">P</button>
+            <button id="global-voice-btn" class="voice-btn">V</button>
+            <input id="global-file-input" type="file" class="hidden">
+          </div>
+          <div id="global-attachment-preview" class="attachment-preview hidden"></div>
+          <div id="global-voice-preview" class="voice-preview hidden"></div>
+          <div class="input-wrapper">
+            <textarea id="global-input" rows="1"></textarea>
+            <div class="char-counter" id="global-char-counter"></div>
+          </div>
+          <button id="send-global" class="send-btn" disabled>Send</button>
+        </div>
+      </section>
+      <section class="tab-panel hidden" id="panel-private">
+        <div id="recipient-bar">
+          <span id="recipient-label">Chat with:</span>
+          <input id="recipient-input">
+          <button id="btn-open-chat">Open</button>
+        </div>
+        <div class="messages" id="private-messages"></div>
+        <div class="typing-indicator" id="private-typing"></div>
+        <div class="input-area">
+          <div class="input-toolbar">
+            <button id="private-file-btn" class="file-attach-btn">P</button>
+            <button id="private-voice-btn" class="voice-btn">V</button>
+            <input id="private-file-input" type="file" class="hidden">
+          </div>
+          <div id="private-attachment-preview" class="attachment-preview hidden"></div>
+          <div id="private-voice-preview" class="voice-preview hidden"></div>
+          <div class="input-wrapper">
+            <textarea id="private-input" rows="1"></textarea>
+            <div class="char-counter" id="private-char-counter"></div>
+          </div>
+          <button id="send-private" class="send-btn" disabled>Send</button>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+<h1>Self-Test Results</h1>
+<div id="results"></div>
+<div id="summary" data-summary=""></div>
+<script type="module">
+(async () => {
+  const out = document.getElementById('results');
+  const log = (s, cls='') => out.insertAdjacentHTML('beforeend', `<pre class="${cls}">${s}</pre>`);
+  const all = [];
+  function check(name, ok, detail) {
+    all.push({ name, ok, detail });
+    if (ok) log('[PASS] ' + name + (detail ? ' -- ' + detail : ''), 'pass');
+    else log('[FAIL] ' + name + (detail ? ' -- ' + detail : ''), 'fail');
+  }
+
+  try {
+    const ui = await import('/js/modules/ui.js');
+    ui.initDom();
+  } catch (e) { log('initDom error: ' + e.message); }
+
+  document.documentElement.setAttribute('data-theme', 'dark');
+  document.getElementById('auth-screen').classList.add('hidden');
+  document.getElementById('chat-screen').classList.remove('hidden');
+  document.getElementById('profile-panel').classList.remove('hidden');
+
+  await new Promise(r => setTimeout(r, 100));
+
+  // DEFECT 1
+  log('=== DEFECT 1: status <select> color in dark mode ===');
+  try {
+    const sel = document.getElementById('edit-status');
+    const opt = sel.querySelector('option');
+    const selStyle = getComputedStyle(sel);
+    const optStyle = getComputedStyle(opt);
+    log('select color: ' + selStyle.color);
+    log('select bg:    ' + selStyle.backgroundColor);
+    log('option color: ' + optStyle.color);
+    log('--text:       ' + getComputedStyle(document.documentElement).getPropertyValue('--text').trim());
+    log('--panel:      ' + getComputedStyle(document.documentElement).getPropertyValue('--panel').trim());
+    function parseRGB(s) { const m = s.match(/(\d+),\s*(\d+),\s*(\d+)/); return m ? [+m[1], +m[2], +m[3]] : null; }
+    function contrast(c1, c2) {
+      const lum = ([r,g,b]) => [r,g,b].map(v => { v/=255; return v<=0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4); }).reduce((a,v,i) => a + [0.2126,0.7152,0.0722][i]*v, 0);
+      const L1 = lum(c1), L2 = lum(c2);
+      return (Math.max(L1,L2)+0.05) / (Math.min(L1,L2)+0.05);
+    }
+    const selFg = parseRGB(selStyle.color), selBg = parseRGB(selStyle.backgroundColor);
+    const optFg = parseRGB(optStyle.color), optBg = parseRGB(optStyle.backgroundColor);
+    if (selFg && selBg) {
+      const c = contrast(selFg, selBg);
+      log('select contrast: ' + c.toFixed(2) + ':1');
+      check('select readable in dark mode', c >= 4.5, 'contrast=' + c.toFixed(2) + ':1 (need >= 4.5)');
+    }
+    if (optFg && optBg) {
+      const c = contrast(optFg, optBg);
+      log('option contrast: ' + c.toFixed(2) + ':1');
+      check('option readable', c >= 4.5, 'contrast=' + c.toFixed(2) + ':1');
+    }
+  } catch (e) { log('D1 err: ' + e.message); }
+
+  // DEFECT 2
+  log('\n=== DEFECT 2: Edit Profile click-twice ===');
+  try {
+    const state = await import('/js/modules/state.js');
+    const ui = await import('/js/modules/ui.js');
+    state.setCurrentUser('u'); state.setCurrentDisplayName('Orig'); state.setCurrentBio('b'); state.setCurrentStatus('online');
+    ui.showProfileEditor();
+    const d1 = document.getElementById('edit-display-name').value;
+    log('after 1st open: "' + d1 + '"');
+    document.getElementById('edit-display-name').value = 'Edited';
+    // Simulate the toggle behavior: panel was open, we call a 2nd openProfileEditor.
+    // The fixed openProfileEditor should now WRITE to staging and close the panel (hide via classList).
+    // We simulate the closing part manually since openProfileEditor lives in app.js.
+    state.setPendingProfileEdits({
+      displayName: document.getElementById('edit-display-name').value,
+      bio:         document.getElementById('edit-bio').value,
+      status:      document.getElementById('edit-status').value
+    });
+    document.getElementById('profile-panel').classList.add('hidden');
+    // Now "re-open" — showProfileEditor should read from staging, not state.
+    ui.showProfileEditor();
+    const d2 = document.getElementById('edit-display-name').value;
+    log('after re-open via staging: "' + d2 + '"');
+    check('re-open preserves in-flight edits', d2 === 'Edited', 'expected "Edited" but got "' + d2 + '"');
+  } catch (e) { log('D2 err: ' + e.message); }
+
+  // DEFECT 3
+  log('\n=== DEFECT 3: avatar preview ===');
+  try {
+    const preview = document.getElementById('editor-avatar-preview');
+    const ps = getComputedStyle(preview);
+    log('preview size: ' + ps.width + ' x ' + ps.height);
+    // Use the rewritten helper (mutates in place)
+    const ui = await import('/js/modules/ui.js');
+    const f = new File([new Uint8Array([0,1,2,3])], 'a.png', {type: 'image/png'});
+    ui.showAvatarPreview(f);
+    const img = preview.querySelector('img.avatar-img');
+    if (img) {
+      const r = img.getBoundingClientRect();
+      log('img rect: ' + r.width + 'x' + r.height);
+      check('avatar preview <img> renders with non-zero size', r.width > 10, 'img width=' + r.width);
+    } else {
+      check('avatar preview <img> inserted', false, 'no img element');
+    }
+  } catch (e) { log('D3 err: ' + e.message); }
+
+  // DEFECT 4
+  log('\n=== DEFECT 4: global upload FormData ===');
+  try {
+    const state = await import('/js/modules/state.js');
+    const api = await import('/js/modules/api.js');
+    const captured = [];
+    window.fetch = async (u, o) => { captured.push({u, o}); return new Response('{"error":"x"}', {status:403}); };
+    state.setCurrentToken('t');
+    const f = new File(['x'], 'a.png', {type: 'image/png'});
+    try { await api.uploadAttachment(f, null, null, true); } catch (e) { log('err: ' + e.message); }
+    if (captured.length) {
+      const body = captured[0].o.body;
+      const fields = body instanceof FormData ? [...body.keys()] : [];
+      log('FormData fields: ' + JSON.stringify(fields));
+      check('global upload includes isGlobal', fields.includes('isGlobal'), 'FIELDS: ' + JSON.stringify(fields));
+      check('global upload includes room', fields.includes('room'), 'FIELDS: ' + JSON.stringify(fields));
+    }
+  } catch (e) { log('D4 err: ' + e.message); }
+
+  // DEFECT 5
+  log('\n=== DEFECT 5: voice record button ===');
+  try {
+    const vb = document.getElementById('global-voice-btn');
+    const vbs = getComputedStyle(vb);
+    log('voice btn: ' + vbs.width + 'x' + vbs.height + ' display=' + vbs.display + ' bg=' + vbs.backgroundColor);
+    const r = vb.getBoundingClientRect();
+    log('voice btn rect: ' + r.width + 'x' + r.height);
+    check('voice button has size (>=24x24)', r.width >= 24 && r.height >= 24, r.width + 'x' + r.height);
+
+    // Look up CSS rules
+    const sheets = [...document.styleSheets];
+    const vbRules = sheets.flatMap(s => { try { return [...s.cssRules]; } catch(e) { return []; } }).filter(r => r.selectorText && r.selectorText.includes('voice-btn'));
+    log('.voice-btn CSS rules: ' + vbRules.length);
+    check('.voice-btn CSS rule exists', vbRules.length > 0, vbRules.length === 0 ? 'NO rule' : 'present');
+
+    const vrRules = sheets.flatMap(s => { try { return [...s.cssRules]; } catch(e) { return []; } }).filter(r => r.selectorText && r.selectorText.includes('voice-recording'));
+    log('.voice-recording CSS rules: ' + vrRules.length);
+    check('.voice-recording CSS rule exists', vrRules.length > 0, vrRules.length === 0 ? 'NO rule' : 'present');
+
+    const vsRules = sheets.flatMap(s => { try { return [...s.cssRules]; } catch(e) { return []; } }).filter(r => r.selectorText && r.selectorText.includes('voice-sending'));
+    log('.voice-sending CSS rules: ' + vsRules.length);
+    check('.voice-sending CSS rule exists', vsRules.length > 0, vsRules.length === 0 ? 'NO rule' : 'present');
+  } catch (e) { log('D5 err: ' + e.message); }
+
+  // SUMMARY
+  const pass = all.filter(t => t.ok).length;
+  const fail = all.filter(t => !t.ok).length;
+  log('\n=== SUMMARY: ' + pass + ' pass, ' + fail + ' fail ===');
+  document.title = 'RESULTS: ' + pass + 'P ' + fail + 'F';
+  document.getElementById('summary').setAttribute('data-summary', JSON.stringify({pass, fail, tests: all}));
+})();
+</script>
+</body>
+</html>

@@ -76,9 +76,10 @@ export async function uploadAttachment(file, room, receiver, isGlobal) {
 
   const formData = new FormData();
   formData.append('file', file);
+  formData.append('isGlobal', isGlobal ? 'true' : 'false');
+  formData.append('room', isGlobal ? 'global' : room);
   if (!isGlobal) {
     formData.append('receiver', receiver);
-    formData.append('room', room);
   }
 
   const res = await fetch('/messages/upload', {

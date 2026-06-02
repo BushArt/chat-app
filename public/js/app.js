@@ -405,6 +405,20 @@ async function restoreSession() {
 
 // ── Profile Editing ──
 function openProfileEditor() {
+  const isCurrentlyOpen = dom.profilePanel && !dom.profilePanel.classList.contains('hidden');
+  if (isCurrentlyOpen) {
+    // Save in-flight edits to staging and close panel (without discarding or persisting)
+    state.setPendingProfileEdits({
+      displayName: dom.editDisplayName.value,
+      bio: dom.editBio.value,
+      status: dom.editStatus.value,
+      avatarFile: selectedAvatarFile
+    });
+    ui.hideProfileEditor();
+    return;
+  }
+  // First open: populate from staging or state
+  state.setPendingProfileEdits(state.getPendingProfileEdits() || null);
   ui.refreshProfileHeader();
   ui.showProfileEditor();
   selectedAvatarFile = null;
@@ -414,6 +428,7 @@ function closeProfileEditor() {
   ui.hideProfileEditor();
   dom.avatarFileInput.value = '';
   selectedAvatarFile = null;
+  state.clearPendingProfileEdits();
 }
 
 async function saveProfile() {
@@ -551,16 +566,11 @@ function init() {
 
   // File upload button wiring (Profile avatar)
   dom.btnUploadAvatar.addEventListener("click", () => dom.avatarFileInput.click());
-  dom.avatarFileInput.addEventListener("change", () => {
+    dom.avatarFileInput.addEventListener("change", () => {
     const file = dom.avatarFileInput.files[0];
     if (!file) return;
     selectedAvatarFile = file;
-    // Preview via object URL
-    const url = URL.createObjectURL(file);
-    const preview = document.getElementById('editor-avatar-preview');
-    if (preview) {
-      preview.innerHTML = `<img class="avatar-img" src="${url}" alt="Avatar preview">`;
-    }
+    ui.showAvatarPreview(file);
   });
 
   dom.btnTheme.addEventListener("click", () => {

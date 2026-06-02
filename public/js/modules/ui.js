@@ -654,16 +654,18 @@ export function refreshProfileHeader() {
 export function showProfileEditor() {
   if (!dom.profilePanel) return;
   dom.profilePanel.classList.remove("hidden");
-  dom.editDisplayName.value = state.getCurrentDisplayName();
-  dom.editBio.value = state.getCurrentBio() || '';
-  dom.editStatus.value = state.getCurrentStatus();
-  // Update editor avatar preview
-  const editorPreview = document.getElementById('editor-avatar-preview');
-  if (editorPreview) {
-    const newPreview = createAvatarElement(state.getCurrentAvatarUrl(), state.getCurrentDisplayName());
-    editorPreview.replaceWith(newPreview);
-    document.getElementById('editor-avatar-preview')?.replaceWith(newPreview);
+  const pending = state.getPendingProfileEdits();
+  if (pending) {
+    dom.editDisplayName.value = pending.displayName ?? state.getCurrentDisplayName();
+    dom.editBio.value = pending.bio ?? state.getCurrentBio() ?? '';
+    dom.editStatus.value = pending.status ?? state.getCurrentStatus();
+  } else {
+    dom.editDisplayName.value = state.getCurrentDisplayName();
+    dom.editBio.value = state.getCurrentBio() || '';
+    dom.editStatus.value = state.getCurrentStatus();
   }
+  // Update editor avatar preview
+  showAvatarPreview(pending?.avatarFile ?? null);
 }
 
 /**
@@ -680,20 +682,27 @@ export function hideProfileEditor() {
  * Show a preview of the selected avatar file before upload.
  */
 export function showAvatarPreview(file) {
-  const previewContainer = document.getElementById('editor-avatar-preview');
-  if (!previewContainer) return;
+  const el = document.getElementById('editor-avatar-preview');
+  if (!el) return;
   if (!file) {
-    // Reset to current
-    const newPreview = createAvatarElement(state.getCurrentAvatarUrl(), state.getCurrentDisplayName());
-    previewContainer.replaceWith(newPreview);
+    // Reset to initial: fill with initial letter and clear any <img>
+    el.textContent = '';
+    el.innerHTML = '';
+    const letter = (state.getCurrentDisplayName() || '?')[0].toUpperCase();
+    const initSpan = document.createElement('span');
+    initSpan.className = 'avatar-initial';
+    initSpan.textContent = letter;
+    el.appendChild(initSpan);
     return;
   }
   const url = URL.createObjectURL(file);
-  const img = document.createElement('span');
-  img.className = 'avatar';
-  img.innerHTML = `<img class="avatar-img" src="${url}" alt="Avatar preview">`;
-  previewContainer.replaceWith(img);
-  // The caller will handle revoking the object URL after upload
+  el.textContent = '';
+  el.innerHTML = '';
+  const img = document.createElement('img');
+  img.className = 'avatar-img';
+  img.src = url;
+  img.alt = 'Avatar preview';
+  el.appendChild(img);
 }
 
 // ── Voice Recording UI ──

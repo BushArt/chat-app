@@ -255,16 +255,26 @@ This repository is a Node.js chat application using Express, Socket.IO, MongoDB,
 
 ## Test Infrastructure
 
-- **Framework:** Jest with projects for server (node), client (jsdom), and e2e (node with real MongoDB)
+- **Framework:** Jest with projects for server (node), server-sockets (node, serial), client (jsdom), and e2e (node with MongoDB or in-memory fallback)
 - **Test suites:**
   - `__tests__/unit/` — server-side unit tests (models, middleware, routes, sockets, config, utils)
-  - `__tests__/client/` — client-side unit tests (state, recorder, socket)
-  - `__tests__/integration/` — integration tests with supertest and socket.io-client (routes, sockets)
-  - `__tests__/e2e/` — end-to-end tests with real MongoDB (auth flows, messaging, attachments)
+  - `__tests__/unit/public/` — client module unit tests (state, ui, api, recorder, socket)
+  - `__tests__/client/` — client integration and behavioral regression tests (`app.integration.test.js`, `ui.behavior.test.js`, `visual.regressions.test.js`)
+  - `__tests__/integration/routes/` — auth route tests (mocked User) and `auth.routes.db.test.js` (real MongoDB via mongodb-memory-server)
+  - `__tests__/integration/sockets/` — socket.io integration (serial `server-sockets` project, `maxWorkers: 1`)
+  - `__tests__/e2e/` — end-to-end tests; uses `TEST_MONGO_URI` when set, otherwise `mongodb-memory-server` via `__tests__/e2e/mongoMemory.js`
+  - `__tests__/browser/` — Playwright browser smoke tests (real DOM/CSS rendering)
 - **Coverage thresholds:** 80% statements, 75% branches, 80% functions, 80% lines (global)
 - **Per-directory thresholds:** cloudinary.js (70%), upload.js (95%), recorder.js (80%)
-- **Scripts:** `npm test`, `npm run test:watch`, `npm run test:coverage`, `npm run test:e2e`, `npm run test:ci`
-- **Current coverage:** 593 tests, 86.64% statements, 88.36% branches, 83% functions, 86.64% lines
+- **Scripts:**
+  - `npm test` — server + client, then server-sockets in band
+  - `npm run test:watch` — Jest watch mode
+  - `npm run test:coverage` — coverage for all Jest projects
+  - `npm run test:e2e` — E2E suite only
+  - `npm run test:regressions` — visual + behavioral UI defect regressions
+  - `npm run test:browser` — Playwright smoke tests
+  - `npm run test:ci` — full CI pipeline (coverage + E2E)
+- **CI:** GitHub Actions workflow (`.github/workflows/test.yml`) runs `test:ci` and a parallel `browser` job for Playwright; `TEST_MONGO_URI` secret is optional when memory-server fallback is used
 
 ---
 
@@ -274,7 +284,7 @@ This repository is a Node.js chat application using Express, Socket.IO, MongoDB,
 |----------|----------|-------------|
 | `JWT_SECRET` | Always | Secret key for signing JWT tokens |
 | `MONGO_URI` | Production/dev | MongoDB connection string |
-| `TEST_MONGO_URI` | E2E testing | Separate test database (will be dropped) |
+| `TEST_MONGO_URI` | E2E testing (optional) | Separate test database; E2E falls back to mongodb-memory-server when unset |
 | `CLOUDINARY_URL` | Production | Cloudinary API URL for file storage |
 | `CLIENT_ORIGIN` | Production | Allowed CORS origin |
 | `BCRYPT_ROUNDS` | Optional | bcrypt hashing rounds (default: 10) |

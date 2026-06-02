@@ -21,8 +21,31 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run unit, integration, and client tests
+      - name: Run unit, integration, client, and E2E tests
         run: npm run test:ci
         env:
           JWT_SECRET: test-secret-for-ci
           TEST_MONGO_URI: ${{ secrets.TEST_MONGO_URI }}
+
+  browser:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser smoke tests
+        run: npm run test:browser
+        env:
+          JWT_SECRET: test-secret-for-ci
+          CI: true

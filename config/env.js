@@ -41,7 +41,10 @@ if (process.env.NODE_ENV === 'production' && !process.env.CLIENT_ORIGIN) {
   process.exit(1);
 }
 
+const MAX_VOICE_SIZE = 10 * 1024 * 1024; // 10 MB
+
 module.exports = {
   allowedOrigin: process.env.CLIENT_ORIGIN ||
-    (process.env.NODE_ENV !== 'production' ? '*' : null)
+    (process.env.NODE_ENV !== 'production' ? '*' : null),
+  MAX_VOICE_SIZE
 };

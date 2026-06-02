@@ -123,6 +123,7 @@ function classifyAttachmentType(mimetype) {
 // ─────────────────────────────────────────
 const { uploadToCloudinary } = require('../config/cloudinary');
 const { attachmentUpload } = require('../middleware/upload');
+const { MAX_VOICE_SIZE } = require('../config/env');
 const logger = require('../utils/logger');
 
 router.post('/upload', verifyToken, uploadRateLimitMiddleware, attachmentUpload.single('file'), async (req, res, next) => {
@@ -132,14 +133,19 @@ router.post('/upload', verifyToken, uploadRateLimitMiddleware, attachmentUpload.
       return next(new HttpError('No file provided.', 400, 'no_file'));
     }
 
-    // 2. Parse form fields
+    // 2. Voice messages are limited to 10 MB (stricter than the 25 MB general limit)
+    if (req.file.mimetype.startsWith('audio/') && req.file.size > MAX_VOICE_SIZE) {
+      return next(new HttpError('Audio file exceeds the 10 MB limit.', 400, 'voice_size_exceeded'));
+    }
+
+    // 3. Parse form fields
     const { room, receiver, isGlobal } = req.body;
 
     if (!room) {
       return next(new HttpError('Room is required.', 400, 'room_required'));
     }
 
-    // 3. Authorization check for private messages
+    // 4. Authorization check for private messages
     if (isGlobal !== 'true') {
       if (!receiver) {
         return next(new HttpError('Receiver is required for private messages.', 400, 'receiver_required'));
@@ -157,10 +163,10 @@ router.post('/upload', verifyToken, uploadRateLimitMiddleware, attachmentUpload.
       mimetype: req.file.mimetype
     });
 
-    // 4. Generate safe public ID
+    // 5. Generate safe public ID
     const publicId = `chat-app/attachments/${crypto.randomUUID()}`;
 
-    // 5. Upload to Cloudinary
+    // 6. Upload to Cloudinary
     let result;
     try {
       result = await uploadToCloudinary(req.file.buffer, {
@@ -179,7 +185,7 @@ router.post('/upload', verifyToken, uploadRateLimitMiddleware, attachmentUpload.
       duration_ms: 0 // Cloudinary SDK does not expose upload duration; left as 0
     });
 
-    // 6. Build and return attachment metadata
+    // 7. Build and return attachment metadata
     const attachment = {
       type: classifyAttachmentType(req.file.mimetype),
       filename: req.file.originalname,

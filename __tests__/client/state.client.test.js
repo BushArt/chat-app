@@ -36,8 +36,8 @@ describe('client state – profile fields', () => {
     state.setOnlineUsersFromList(['alice', 'bob']);
     const map = state.getOnlineUsersMap();
     expect(map.size).toBe(2);
-    expect(map.get('alice')).toEqual({ username: 'alice', displayName: 'alice', status: 'online' });
-    expect(map.get('bob')).toEqual({ username: 'bob', displayName: 'bob', status: 'online' });
+    expect(map.get('alice')).toEqual({ username: 'alice', displayName: 'alice', status: 'online', avatarUrl: null });
+    expect(map.get('bob')).toEqual({ username: 'bob', displayName: 'bob', status: 'online', avatarUrl: null });
   });
 
   test('setOnlineUsersFromList handles new object[] format', () => {
@@ -47,8 +47,8 @@ describe('client state – profile fields', () => {
     ]);
     const map = state.getOnlineUsersMap();
     expect(map.size).toBe(2);
-    expect(map.get('alice')).toEqual({ username: 'alice', displayName: 'Alice', status: 'away' });
-    expect(map.get('bob')).toEqual({ username: 'bob', displayName: 'Bob', status: 'busy' });
+    expect(map.get('alice')).toEqual({ username: 'alice', displayName: 'Alice', status: 'away', avatarUrl: null });
+    expect(map.get('bob')).toEqual({ username: 'bob', displayName: 'Bob', status: 'busy', avatarUrl: null });
   });
 
   test('setOnlineUsersFromList skips null/undefined entries', () => {
@@ -69,11 +69,11 @@ describe('client state – profile fields', () => {
 
   test('updateOnlineUser updates an existing entry in onlineUsersMap', () => {
     state.setOnlineUsersFromList([
-      { username: 'alice', displayName: 'Alice', status: 'online' },
+      { username: 'alice', displayName: 'Alice', status: 'online', avatarUrl: null },
     ]);
     state.updateOnlineUser('alice', 'Alice Updated', 'busy');
     const map = state.getOnlineUsersMap();
-    expect(map.get('alice')).toEqual({ username: 'alice', displayName: 'Alice Updated', status: 'busy' });
+    expect(map.get('alice')).toEqual({ username: 'alice', displayName: 'Alice Updated', status: 'busy', avatarUrl: null });
   });
 
   test('updateOnlineUser does nothing for unknown user', () => {

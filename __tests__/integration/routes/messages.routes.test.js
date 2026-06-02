@@ -275,6 +275,41 @@ describe("POST /messages/upload", () => {
     });
   });
 
+  // ── Voice message size limit ──────────────────────────────────
+  test("returns 400 when audio file exceeds 10 MB voice limit", async () => {
+    jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
+
+    const app = createApp();
+    // 11 MB buffer exceeds the 10 MB voice limit
+    const largeAudio = Buffer.alloc(11 * 1024 * 1024);
+    const res = await request(app)
+      .post("/messages/upload")
+      .field("room", "global")
+      .field("isGlobal", "true")
+      .attach("file", largeAudio, { filename: "voice.webm", contentType: "audio/webm" })
+      .set("Authorization", "Bearer valid-token");
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("voice_size_exceeded");
+  });
+
+  test("allows audio file up to 10 MB", async () => {
+    jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
+
+    const app = createApp();
+    // Exactly 10 MB — should be allowed
+    const audioAtLimit = Buffer.alloc(10 * 1024 * 1024);
+    const res = await request(app)
+      .post("/messages/upload")
+      .field("room", "global")
+      .field("isGlobal", "true")
+      .attach("file", audioAtLimit, { filename: "voice.webm", contentType: "audio/webm" })
+      .set("Authorization", "Bearer valid-token");
+
+    expect(res.status).toBe(200);
+    expect(res.body.type).toBe("audio");
+  });
+
   // ── Authentication ──────────────────────────────────────────────
   test("returns 401 without JWT", async () => {
     const app = createApp();

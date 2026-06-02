@@ -6,6 +6,7 @@ import * as optimistic from './modules/optimistic.js';
 import * as socket from './modules/socket.js';
 import { connect } from './modules/socket.js';
 import * as ui from './modules/ui.js';
+import * as recorder from './modules/recorder.js';
 
 let dom;
 let selectedAvatarFile = null;
@@ -451,6 +452,68 @@ function setupKeyboardShortcuts() {
   });
 }
 
+// ── Voice Recording ──
+function setupVoiceRecording(channel) {
+  const voiceBtn = channel === 'global' ? dom.globalVoiceBtn : dom.privateVoiceBtn;
+  if (!voiceBtn) return;
+
+  // Update UI on state changes
+  recorder.onStateChange((newState) => {
+    ui.updateVoiceButton(channel, newState);
+  });
+
+  voiceBtn.addEventListener('click', () => {
+    const currentState = recorder.getState();
+
+    if (currentState === 'idle') {
+      // Start recording
+      recorder.startRecording(async (blob, filename, mimeType) => {
+        // Show preview with Send / Discard buttons
+        ui.showVoicePreview(channel, blob,
+          // Send handler
+          async () => {
+            recorder.setSending();
+            const file = new File([blob], filename, { type: mimeType });
+            try {
+              const room = channel === 'global' ? null : state.getCurrentRoom();
+              const receiver = channel === 'global' ? null : state.getCurrentRecipient();
+              const result = await api.uploadAttachment(file, room, receiver, channel === 'global');
+
+              // Store as pending attachment and send
+              pendingAttachments[channel] = result;
+              state.setPendingAttachment(result);
+
+              // Trigger send
+              if (channel === 'global') {
+                sendGlobalMessage();
+              } else {
+                sendPrivateMessage();
+              }
+
+              recorder.reset();
+              ui.clearVoicePreview(channel);
+            } catch (err) {
+              ui.appendSystem(
+                channel === 'global' ? 'global-messages' : 'private-messages',
+                'Voice upload failed: ' + (err.message || 'Unknown error')
+              );
+              recorder.setPreview(); // Allow retry
+            }
+          },
+          // Discard handler
+          () => {
+            recorder.discardRecording();
+            ui.clearVoicePreview(channel);
+          }
+        );
+      });
+    } else if (currentState === 'recording') {
+      // Stop recording
+      recorder.stopRecording();
+    }
+  });
+}
+
 // ---- init ----
 function init() {
   dom = ui.initDom();
@@ -481,6 +544,10 @@ function init() {
       }
     }
   });
+
+  // ── Voice recording setup ──
+  setupVoiceRecording('global');
+  setupVoiceRecording('private');
 
   // File upload button wiring (Profile avatar)
   dom.btnUploadAvatar.addEventListener("click", () => dom.avatarFileInput.click());

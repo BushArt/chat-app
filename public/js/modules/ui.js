@@ -2,7 +2,11 @@
 import * as state from './state.js';
 import * as utils from './utils.js';
 
+/* global URL */
 let dom;
+
+// ── Voice preview object URL tracking ──
+const voiceObjectUrls = {};
 
 /**
  * Deterministically generate a background color from a string (username).
@@ -111,7 +115,12 @@ export function initDom() {
     globalAttachPreview: document.getElementById("global-attachment-preview"),
     privateFileBtn: document.getElementById("private-file-btn"),
     privateFileInput: document.getElementById("private-file-input"),
-    privateAttachPreview: document.getElementById("private-attachment-preview")
+    privateAttachPreview: document.getElementById("private-attachment-preview"),
+    // Voice recording elements
+    globalVoiceBtn: document.getElementById("global-voice-btn"),
+    privateVoiceBtn: document.getElementById("private-voice-btn"),
+    globalVoicePreview: document.getElementById("global-voice-preview"),
+    privateVoicePreview: document.getElementById("private-voice-preview")
   };
   return dom;
 }
@@ -685,4 +694,105 @@ export function showAvatarPreview(file) {
   img.innerHTML = `<img class="avatar-img" src="${url}" alt="Avatar preview">`;
   previewContainer.replaceWith(img);
   // The caller will handle revoking the object URL after upload
+}
+
+// ── Voice Recording UI ──
+
+/**
+ * Update the voice record button appearance based on recorder state.
+ * @param {'global'|'private'} channel
+ * @param {'idle'|'requesting'|'recording'|'preview'|'sending'} recorderState
+ */
+export function updateVoiceButton(channel, recorderState) {
+  const btn = channel === 'global' ? dom.globalVoiceBtn : dom.privateVoiceBtn;
+  if (!btn) return;
+
+  switch (recorderState) {
+    case 'idle':
+      btn.textContent = '🎤';
+      btn.disabled = false;
+      btn.title = 'Record voice message';
+      btn.classList.remove('voice-recording', 'voice-sending');
+      break;
+    case 'requesting':
+      btn.textContent = '⏳';
+      btn.disabled = true;
+      btn.title = 'Requesting microphone...';
+      btn.classList.remove('voice-recording');
+      break;
+    case 'recording':
+      btn.textContent = '⏺ ■';
+      btn.disabled = false;
+      btn.title = 'Recording — click to stop';
+      btn.classList.add('voice-recording');
+      break;
+    case 'preview':
+      btn.classList.add('hidden');
+      break;
+    case 'sending':
+      btn.textContent = '⏳';
+      btn.disabled = true;
+      btn.title = 'Uploading...';
+      btn.classList.remove('voice-recording');
+      btn.classList.add('voice-sending');
+      break;
+  }
+}
+
+/**
+ * Show the voice preview panel with audio player and send/discard controls.
+ * @param {'global'|'private'} channel
+ * @param {Blob} blob - the recorded audio blob
+ * @param {function} onSend - callback when user clicks send
+ * @param {function} onDiscard - callback when user clicks discard
+ */
+export function showVoicePreview(channel, blob, onSend, onDiscard) {
+  const previewEl = channel === 'global' ? dom.globalVoicePreview : dom.privateVoicePreview;
+  if (!previewEl) return;
+
+  const objectUrl = URL.createObjectURL(blob);
+  voiceObjectUrls[channel] = objectUrl;
+
+  previewEl.classList.remove('hidden');
+  previewEl.innerHTML = `
+    <audio controls src="${objectUrl}" class="voice-preview-player"></audio>
+    <div class="voice-preview-actions">
+      <button type="button" class="voice-preview-send btn-primary" aria-label="Send voice message">Send</button>
+      <button type="button" class="voice-preview-discard" aria-label="Discard voice message">Discard</button>
+    </div>
+  `;
+
+  previewEl.querySelector('.voice-preview-send').addEventListener('click', (e) => {
+    e.preventDefault();
+    onSend();
+  });
+
+  previewEl.querySelector('.voice-preview-discard').addEventListener('click', (e) => {
+    e.preventDefault();
+    onDiscard();
+  });
+}
+
+/**
+ * Clear the voice preview panel and revoke the object URL.
+ * @param {'global'|'private'} channel
+ */
+export function clearVoicePreview(channel) {
+  const previewEl = channel === 'global' ? dom.globalVoicePreview : dom.privateVoicePreview;
+  if (previewEl) {
+    previewEl.classList.add('hidden');
+    previewEl.innerHTML = '';
+  }
+
+  // Revoke object URL to free memory
+  if (voiceObjectUrls[channel]) {
+    URL.revokeObjectURL(voiceObjectUrls[channel]);
+    delete voiceObjectUrls[channel];
+  }
+
+  // Restore voice button
+  const btn = channel === 'global' ? dom.globalVoiceBtn : dom.privateVoiceBtn;
+  if (btn) {
+    btn.classList.remove('hidden');
+  }
 }

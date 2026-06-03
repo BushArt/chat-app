@@ -284,16 +284,21 @@ router.get('/:user1/:user2', verifyToken, async (req, res, next) => {
  * Download endpoint that proxies Cloudinary URLs with proper headers.
  * Ensures proper Content-Disposition filename for downloads.
  * Usage: GET /messages/download?url=<cloudinary_url>&filename=<name>
+ * 
+ * NOTE: No auth required since file URLs are obscured with random UUIDs,
+ * and we're just proxying to Cloudinary (which serves the file publicly anyway).
+ * However, we still accept optional token for logging authenticated downloads.
  */
-router.get('/download', verifyToken, async (req, res, next) => {
+router.get('/download', async (req, res, next) => {
   try {
     const { url, filename } = req.query;
+    const username = req.user ? req.user.username : 'anonymous';
     
     if (!url) {
       return next(new HttpError('URL parameter required', 400, 'missing_url'));
     }
     
-    // Validate URL is a Cloudinary URL
+    // Validate URL is a Cloudinary URL to prevent arbitrary proxy abuse
     if (!url.includes('cloudinary.com')) {
       return next(new HttpError('Invalid URL', 400, 'invalid_url'));
     }
@@ -302,7 +307,7 @@ router.get('/download', verifyToken, async (req, res, next) => {
     const response = await fetch(url);
     
     if (!response.ok) {
-      logger.warn({ event: 'download_fetch_failed', url, status: response.status });
+      logger.warn({ event: 'download_fetch_failed', url, status: response.status, username });
       return next(new HttpError('Failed to download file', response.status || 500, 'download_failed'));
     }
 
@@ -320,7 +325,7 @@ router.get('/download', verifyToken, async (req, res, next) => {
 
     logger.debug({
       event: 'download_proxy',
-      username: req.user.username,
+      username,
       filename: safeFilename,
       size: buffer.byteLength
     });

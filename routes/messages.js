@@ -3,6 +3,7 @@ const router = express.Router();
 const makeRateLimiter = require('../middleware/rateLimiter');
 const HttpError = require('../utils/HttpError');
 const crypto = require('crypto');
+const path = require('path');
 
 const isTestEnvironment = process.env.NODE_ENV === 'test';
 
@@ -182,8 +183,13 @@ router.post('/upload', verifyToken, uploadRateLimitMiddleware, attachmentUpload.
       mimetype: req.file.mimetype
     });
 
-    // 5. Generate safe public ID
-    const publicId = `chat-app/attachments/${crypto.randomUUID()}`;
+    // 5. Generate safe public ID — include the file extension so Cloudinary
+    //    can both store and serve the file in its original format. Without an
+    //    extension, PDFs (resource_type=image) are served as a default image
+    //    conversion, corrupting the file.
+    const rawExt = path.extname(req.file.originalname).toLowerCase();
+    const safeExt = /^\.[a-z0-9]{1,8}$/.test(rawExt) ? rawExt : '';
+    const publicId = `chat-app/attachments/${crypto.randomUUID()}${safeExt}`;
 
     // 6. Upload to Cloudinary
     let result;
@@ -319,9 +325,12 @@ router.get('/download', async (req, res, next) => {
     res.set('Content-Type', contentType);
     res.set('Content-Length', buffer.byteLength);
     
-    // Set Content-Disposition with filename for proper download
-    const safeFilename = (filename || 'download').replace(/[^\w\s.-]/g, '_');
-    res.set('Content-Disposition', `attachment; filename="${safeFilename}"`);
+    // Set Content-Disposition with filename for proper download.
+    // Keep Unicode characters (e.g. Chinese) in the filename.
+    // RFC 6266: provide both filename (ASCII fallback) and filename* (UTF-8 encoded).
+    const safeFilename = (filename || 'download').replace(/[<>:"/\\|?*\x00-\x1F]/g, '_');
+    const encodedFilename = encodeURIComponent(safeFilename).replace(/'/g, '%27');
+    res.set('Content-Disposition', `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodedFilename}`);
 
     logger.debug({
       event: 'download_proxy',

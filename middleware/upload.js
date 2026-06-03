@@ -15,6 +15,7 @@ function normalizeMime(mimetype) {
 
 const avatarUpload = multer({
   storage,
+  defParamCharset: 'utf-8',
   limits: { fileSize: AVATAR_MAX_BYTES },
   fileFilter: (_req, file, cb) => {
     const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
@@ -24,6 +25,7 @@ const avatarUpload = multer({
 
 const attachmentUpload = multer({
   storage,
+  defParamCharset: 'utf-8',
   limits: { fileSize: ATTACHMENT_MAX_BYTES },
   fileFilter: (_req, file, cb) => {
     const allowed = [

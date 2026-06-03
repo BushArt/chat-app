@@ -516,15 +516,16 @@ function setupVoiceRecording(channel) {
               pendingAttachments[channel] = result;
               state.setPendingAttachment(result);
 
+              // Clear preview first so autoResize runs after layout is stable
+              recorder.reset();
+              ui.clearVoicePreview(channel);
+
               // Trigger send
               if (channel === 'global') {
                 sendGlobalMessage();
               } else {
                 sendPrivateMessage();
               }
-
-              recorder.reset();
-              ui.clearVoicePreview(channel);
             } catch (err) {
               ui.appendSystem(
                 channel === 'global' ? 'global-messages' : 'private-messages',

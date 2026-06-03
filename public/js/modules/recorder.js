@@ -197,6 +197,10 @@ export function setPreview() {
 
 /**
  * Reset fully to idle (called after successful send or on session reset).
+ *
+ * IMPORTANT: setState('idle') must fire BEFORE clearing callbacks, so that
+ * UI listeners (e.g. updateVoiceButton, clearVoicePreview) are notified and
+ * the record button reverts to the idle (🎤) state.
  */
 export function reset() {
   clearTimeout(_maxDurationTimer);
@@ -205,6 +209,6 @@ export function reset() {
   _chunks = [];
   _mediaRecorder = null;
   _onRecordingReadyCb = null;
-  _onStateChangeCbs = [];
-  setState('idle');
+  setState('idle');       // Fire FIRST so UI gets the state change notification
+  _onStateChangeCbs = []; // Then clean up callbacks
 }

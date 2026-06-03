@@ -210,8 +210,11 @@ function renderAttachment(attachment) {
   } else if (attachment.type === "file") {
     const link = document.createElement("a");
     link.className = "attachment-file-link";
-    link.href = attachment.url;
-    link.target = "_blank";
+    // Use server proxy for downloads to ensure proper Content-Disposition headers
+    const downloadUrl = `/messages/download?url=${encodeURIComponent(attachment.url)}&filename=${encodeURIComponent(attachment.filename || 'download')}`;
+    link.href = downloadUrl;
+    // Use download attribute to force download with proper filename
+    link.download = attachment.filename || "download";
     link.rel = "noopener noreferrer";
     // File icon based on mimetype
     const icon = getFileIcon(attachment.mimetype || "");

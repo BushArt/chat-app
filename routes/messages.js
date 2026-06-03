@@ -280,4 +280,56 @@ router.get('/:user1/:user2', verifyToken, async (req, res, next) => {
   }
 });
 
+/**
+ * Download endpoint that proxies Cloudinary URLs with proper headers.
+ * Ensures proper Content-Disposition filename for downloads.
+ * Usage: GET /messages/download?url=<cloudinary_url>&filename=<name>
+ */
+router.get('/download', verifyToken, async (req, res, next) => {
+  try {
+    const { url, filename } = req.query;
+    
+    if (!url) {
+      return next(new HttpError('URL parameter required', 400, 'missing_url'));
+    }
+    
+    // Validate URL is a Cloudinary URL
+    if (!url.includes('cloudinary.com')) {
+      return next(new HttpError('Invalid URL', 400, 'invalid_url'));
+    }
+
+    // Fetch file from Cloudinary using built-in fetch
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      logger.warn({ event: 'download_fetch_failed', url, status: response.status });
+      return next(new HttpError('Failed to download file', response.status || 500, 'download_failed'));
+    }
+
+    // Get content type from Cloudinary response
+    const contentType = response.headers.get('content-type') || 'application/octet-stream';
+    const buffer = await response.arrayBuffer();
+
+    // Set response headers with proper filename
+    res.set('Content-Type', contentType);
+    res.set('Content-Length', buffer.byteLength);
+    
+    // Set Content-Disposition with filename for proper download
+    const safeFilename = (filename || 'download').replace(/[^\w\s.-]/g, '_');
+    res.set('Content-Disposition', `attachment; filename="${safeFilename}"`);
+
+    logger.debug({
+      event: 'download_proxy',
+      username: req.user.username,
+      filename: safeFilename,
+      size: buffer.byteLength
+    });
+
+    res.send(Buffer.from(buffer));
+  } catch (err) {
+    logger.error({ event: 'download_error', error: String(err) });
+    next(new HttpError('Download error', 500, 'download_error'));
+  }
+});
+
 module.exports = router;

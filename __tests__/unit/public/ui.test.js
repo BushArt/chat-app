@@ -288,6 +288,62 @@ describe('appendHistoryBatch', () => {
     const container = document.getElementById('global-messages');
     expect(container.querySelectorAll('.date-separator').length).toBe(2);
   });
+
+  test('renders attachments from history (image)', () => {
+    const attachment = {
+      type: 'image',
+      filename: 'cat.png',
+      url: 'https://res.cloudinary.com/demo/image/upload/cat.png',
+      mimetype: 'image/png',
+      size: 12345
+    };
+    const history = [
+      { sender: 'alice', message: 'see image', createdAt: '2026-01-01T12:00:00Z', attachment }
+    ];
+    ui.appendHistoryBatch('global-messages', history);
+    const container = document.getElementById('global-messages');
+    const img = container.querySelector('.attachment-image');
+    expect(img).not.toBeNull();
+    expect(img.getAttribute('src')).toBe(attachment.url);
+    expect(img.getAttribute('alt')).toBe(attachment.filename);
+  });
+
+  test('renders attachments from history (file uses proxy URL)', () => {
+    const attachment = {
+      type: 'file',
+      filename: 'notes.txt',
+      url: 'https://res.cloudinary.com/demo/raw/upload/notes.txt',
+      mimetype: 'text/plain',
+      size: 42
+    };
+    const history = [
+      { sender: 'alice', message: 'see file', createdAt: '2026-01-01T12:00:00Z', attachment }
+    ];
+    ui.appendHistoryBatch('global-messages', history);
+    const container = document.getElementById('global-messages');
+    const link = container.querySelector('.attachment-file-link');
+    expect(link).not.toBeNull();
+    expect(link.getAttribute('href')).toContain('/messages/download?url=');
+    expect(link.getAttribute('href')).toContain(encodeURIComponent(attachment.url));
+    expect(link.getAttribute('href')).toContain(encodeURIComponent(attachment.filename));
+  });
+
+  test('renders attachment-only messages (no text) from history', () => {
+    const attachment = {
+      type: 'file',
+      filename: 'note.txt',
+      url: 'https://res.cloudinary.com/demo/raw/upload/note.txt',
+      mimetype: 'text/plain',
+      size: 42
+    };
+    const history = [
+      { sender: 'alice', message: undefined, createdAt: '2026-01-01T12:00:00Z', attachment }
+    ];
+    ui.appendHistoryBatch('global-messages', history);
+    const container = document.getElementById('global-messages');
+    expect(container.querySelectorAll('.message').length).toBe(1);
+    expect(container.querySelector('.attachment-file-link')).not.toBeNull();
+  });
 });
 
 describe('updateCharCounter', () => {

@@ -240,7 +240,8 @@ function getFileIcon(mimetype) {
 }
 
 export function appendMessage(containerId, sender, text, time, type, options = {}) {
-  if (!sender || typeof text !== "string" || !time) return null;
+  if (!sender || !time) return null;
+  if (text != null && typeof text !== "string") return null;
   const container = containerId ? document.getElementById(containerId) : null;
   if (container) {
     const dateKey = getDateKey(time);
@@ -321,14 +322,22 @@ export function appendHistoryBatch(containerId, history, mode = 'replace') {
   const fragment = document.createDocumentFragment();
   let lastDate = mode === 'prepend' ? container.dataset.lastDate || "" : "";
   history.forEach((msg) => {
-    if (!msg || typeof msg.message !== "string") return;
+    if (!msg) return;
+    if (msg.message != null && typeof msg.message !== "string") return;
     if (!msg.createdAt || Number.isNaN(new Date(msg.createdAt).getTime())) return;
     const dateKey = getDateKey(msg.createdAt);
     if (lastDate !== dateKey) {
       appendDateSeparator(fragment, container, msg.createdAt);
       lastDate = dateKey;
     }
-    const bubble = appendMessage(null, msg.sender, msg.message, msg.createdAt, msg.sender === state.getCurrentUser() ? "sent" : "received");
+    const bubble = appendMessage(
+      null,
+      msg.sender,
+      msg.message,
+      msg.createdAt,
+      msg.sender === state.getCurrentUser() ? "sent" : "received",
+      { attachment: msg.attachment }
+    );
     fragment.appendChild(bubble);
   });
   if (lastDate) {

@@ -159,6 +159,7 @@ describe("privateMessage handler", () => {
       isGlobal: false,
       clientId: "c1",
       senderDisplayName: "Alice",
+      senderAvatarUrl: "",
       attachment: null,
     });
   });
@@ -178,6 +179,7 @@ describe("privateMessage handler", () => {
       room: "alice:bob",
       clientId: "c1",
       senderDisplayName: "Alice",
+      senderAvatarUrl: "",
       attachment: null,
     });
   });
@@ -197,6 +199,7 @@ describe("privateMessage handler", () => {
       room: "alice:bob",
       clientId: "c1",
       senderDisplayName: "Alice",
+      senderAvatarUrl: "",
       attachment,
     });
   });

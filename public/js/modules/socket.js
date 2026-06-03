@@ -22,13 +22,13 @@ const hasSocketIoClient = typeof io === "function";
 socket.on("receive_global_message", (data) => {
   if (!data || (typeof data.message !== "string" && !data.attachment?.url)) return;
   const type = data.sender === state.getCurrentUser() ? "sent" : "received";
-  
-  // ✅ FINAL FAILSAFE: Always cancel timeout for our messages - NO EXCEPTIONS
+
+  // FINAL FAILSAFE: Always cancel timeout for our messages - NO EXCEPTIONS
   if (type === "sent" && data.clientId && state.hasOptimisticTimeout(data.clientId)) {
     state.deleteOptimisticTimeout(data.clientId);
   }
   if (!(type === "sent" && optimistic.resolveOptimistic("global", data))) {
-    ui.appendMessage("global-messages", data.sender, data.message || "", data.createdAt || new Date().toISOString(), type, { attachment: data.attachment });
+    ui.appendMessage("global-messages", data.sender, data.message || "", data.createdAt || new Date().toISOString(), type, { attachment: data.attachment, senderAvatarUrl: data.senderAvatarUrl || null });
   }
 
   if (data.sender === state.getCurrentUser()) {
@@ -46,14 +46,14 @@ socket.on("receive_global_message", (data) => {
 socket.on("receive_message", (data) => {
   if (!data || (typeof data.message !== "string" && !data.attachment?.url)) return;
   const type = data.sender === state.getCurrentUser() ? "sent" : "received";
-  
-  // ✅ FINAL FAILSAFE: Always cancel timeout for our messages - NO EXCEPTIONS
+
+  // FINAL FAILSAFE: Always cancel timeout for our messages - NO EXCEPTIONS
   if (type === "sent" && data.clientId && state.hasOptimisticTimeout(data.clientId)) {
     state.deleteOptimisticTimeout(data.clientId);
   }
   if (data.room === state.getCurrentRoom()) {
     if (!(type === "sent" && optimistic.resolveOptimistic("private", data))) {
-      ui.appendMessage("private-messages", data.sender, data.message || "", data.createdAt || new Date().toISOString(), type, { attachment: data.attachment });
+      ui.appendMessage("private-messages", data.sender, data.message || "", data.createdAt || new Date().toISOString(), type, { attachment: data.attachment, senderAvatarUrl: data.senderAvatarUrl || null });
     }
   } else {
     if (data.sender === state.getCurrentUser()) {
@@ -100,7 +100,7 @@ socket.on("user_typing", ({ username, room }) => {
 });
 
 socket.on("user_stopped_typing", ({ username, room }) => {
-  if (!username) return;
+  if (!username || username === state.getCurrentUser()) return;
   if (room === "global") {
     state.removeTypingUser("global", username);
     ui.renderTyping("global");
@@ -130,7 +130,7 @@ socket.on("profile_updated", (data) => {
   // Re-render the online user list to reflect the change
   const currentList = Array.from(state.getOnlineUsersMap().values());
   ui.renderOnlineUsers(currentList);
-  // Update own profile if it's the current user
+  // Update own profile if current user
   if (data.username === state.getCurrentUser()) {
     state.setCurrentDisplayName(data.displayName);
     state.setCurrentStatus(data.status);
@@ -163,7 +163,7 @@ socket.on("disconnect", () => {
   // Clear sending flags on disconnect to prevent permanent lockup
   state.setSendingGlobal(false);
   state.setSendingPrivate(false);
-  
+
   // Clear all pending optimistic timeouts
   state.clearAllOptimisticTimeouts();
 });

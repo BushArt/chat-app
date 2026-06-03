@@ -256,11 +256,18 @@ export function appendMessage(containerId, sender, text, time, type, options = {
 
   // For received messages, show sender avatar
   if (type === "received") {
-    // Determine display name and avatar URL for the sender
+    // Prefer the denormalized senderAvatarUrl on the message itself (works for
+    // offline senders and avoids a race with the online_users socket event).
+    // Fall back to the live onlineUsersMap for legacy messages that pre-date
+    // the denormalized field.
+    let displayName = sender;
+    let avatarUrl = options.senderAvatarUrl || null;
     const onlineMap = state.getOnlineUsersMap();
     const userData = onlineMap.get(sender);
-    const displayName = userData ? userData.displayName : sender;
-    const avatarUrl = userData ? userData.avatarUrl : null;
+    if (userData) {
+      if (userData.displayName) displayName = userData.displayName;
+      if (!avatarUrl) avatarUrl = userData.avatarUrl;
+    }
     const avatar = createAvatarElement(avatarUrl, displayName);
     bubble.appendChild(avatar);
   }
@@ -336,7 +343,7 @@ export function appendHistoryBatch(containerId, history, mode = 'replace') {
       msg.message,
       msg.createdAt,
       msg.sender === state.getCurrentUser() ? "sent" : "received",
-      { attachment: msg.attachment }
+      { attachment: msg.attachment, senderAvatarUrl: msg.senderAvatarUrl || null }
     );
     fragment.appendChild(bubble);
   });

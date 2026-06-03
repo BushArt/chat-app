@@ -231,6 +231,34 @@ describe('appendMessage', () => {
     expect(container.querySelectorAll('.message').length).toBe(1);
   });
 
+  test('renders avatar from denormalized senderAvatarUrl on history', () => {
+    state.setOnlineUsersFromList([]); // sender is "offline"
+    ui.appendMessage('global-messages', 'alice', 'hi', '2026-01-01T12:00:00Z', 'received', {
+      senderAvatarUrl: 'https://res.cloudinary.com/demo/avatar.png'
+    });
+    const container = document.getElementById('global-messages');
+    const img = container.querySelector('.avatar-img');
+    expect(img).not.toBeNull();
+    expect(img.getAttribute('src')).toBe('https://res.cloudinary.com/demo/avatar.png');
+  });
+
+  test('falls back to onlineUsersMap avatar when senderAvatarUrl is missing', () => {
+    state.setOnlineUsersFromList([{ username: 'alice', displayName: 'Alice', avatarUrl: 'https://x.com/a.png', status: 'online' }]);
+    ui.appendMessage('global-messages', 'alice', 'hi', '2026-01-01T12:00:00Z', 'received');
+    const img = document.getElementById('global-messages').querySelector('.avatar-img');
+    expect(img).not.toBeNull();
+    expect(img.getAttribute('src')).toBe('https://x.com/a.png');
+  });
+
+  test('denormalized senderAvatarUrl wins over onlineUsersMap (stale online data)', () => {
+    state.setOnlineUsersFromList([{ username: 'alice', displayName: 'Alice', avatarUrl: 'https://x.com/old.png', status: 'online' }]);
+    ui.appendMessage('global-messages', 'alice', 'hi', '2026-01-01T12:00:00Z', 'received', {
+      senderAvatarUrl: 'https://res.cloudinary.com/demo/new.png'
+    });
+    const img = document.getElementById('global-messages').querySelector('.avatar-img');
+    expect(img.getAttribute('src')).toBe('https://res.cloudinary.com/demo/new.png');
+  });
+
   test('returns null when sender is missing', () => {
     const result = ui.appendMessage('global-messages', '', 'text', '2026-01-01T12:00:00Z', 'received');
     expect(result).toBeNull();
@@ -343,6 +371,22 @@ describe('appendHistoryBatch', () => {
     const container = document.getElementById('global-messages');
     expect(container.querySelectorAll('.message').length).toBe(1);
     expect(container.querySelector('.attachment-file-link')).not.toBeNull();
+  });
+
+  test('renders avatar from senderAvatarUrl in history batch', () => {
+    const history = [
+      {
+        sender: 'alice',
+        message: 'see image',
+        createdAt: '2026-01-01T12:00:00Z',
+        senderAvatarUrl: 'https://res.cloudinary.com/demo/avatar.png',
+        attachment: { type: 'image', filename: 'cat.png', url: 'https://res.cloudinary.com/demo/cat.png', mimetype: 'image/png', size: 100 }
+      }
+    ];
+    ui.appendHistoryBatch('global-messages', history);
+    const img = document.getElementById('global-messages').querySelector('.avatar-img');
+    expect(img).not.toBeNull();
+    expect(img.getAttribute('src')).toBe('https://res.cloudinary.com/demo/avatar.png');
   });
 });
 

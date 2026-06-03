@@ -118,7 +118,7 @@ describe('receive_global_message', () => {
 
     expect(mockUi.appendMessage).toHaveBeenCalledWith(
       'global-messages', 'bob', 'hello', '2026-01-01T00:00:00Z', 'received',
-      { attachment: undefined }
+      { attachment: undefined, senderAvatarUrl: null }
     );
   });
 
@@ -131,7 +131,7 @@ describe('receive_global_message', () => {
 
     expect(mockUi.appendMessage).toHaveBeenCalledWith(
       'global-messages', 'alice', 'my msg', '2026-01-01T00:00:00Z', 'sent',
-      { attachment: undefined }
+      { attachment: undefined, senderAvatarUrl: null }
     );
     expect(mockState.setSendingGlobal).toHaveBeenCalledWith(false);
   });
@@ -207,7 +207,7 @@ describe('receive_message', () => {
 
     expect(mockUi.appendMessage).toHaveBeenCalledWith(
       'private-messages', 'bob', 'private hi', '2026-01-01T00:00:00Z', 'received',
-      { attachment: undefined }
+      { attachment: undefined, senderAvatarUrl: null }
     );
   });
 

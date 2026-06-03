@@ -132,6 +132,29 @@ describe("GET /messages/global", () => {
     expect(res.body.messages[0]).toHaveProperty("clientId");
   });
 
+  test("returns senderAvatarUrl on each message in the global history response", async () => {
+    const messages = [
+      {
+        sender: "alice",
+        message: "hello",
+        createdAt: new Date("2026-05-17T12:00:00Z"),
+        clientId: "c1",
+        _id: "msg1",
+        senderAvatarUrl: "https://res.cloudinary.com/demo/avatar.png"
+      },
+    ];
+    jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
+    Message.find.mockReturnValue(mockChain(messages));
+
+    const app = createApp();
+    const res = await request(app)
+      .get("/messages/global")
+      .set("Authorization", "Bearer valid-token");
+
+    expect(res.body.messages[0]).toHaveProperty("senderAvatarUrl");
+    expect(res.body.messages[0].senderAvatarUrl).toBe("https://res.cloudinary.com/demo/avatar.png");
+  });
+
   test("returns empty messages array when no global messages exist", async () => {
     jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
     Message.find.mockReturnValue(mockChain([]));

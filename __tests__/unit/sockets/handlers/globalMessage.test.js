@@ -225,6 +225,7 @@ describe("globalMessage handler", () => {
       isGlobal: true,
       clientId: "client-1",
       senderDisplayName: "Alice",
+      senderAvatarUrl: "",
       attachment: null,
     });
   });
@@ -251,6 +252,7 @@ describe("globalMessage handler", () => {
       createdAt,
       clientId: "client-1",
       senderDisplayName: "Alice",
+      senderAvatarUrl: "",
       attachment: null,
     });
   });
@@ -269,6 +271,7 @@ describe("globalMessage handler", () => {
       createdAt,
       clientId: "c1",
       senderDisplayName: "Alice",
+      senderAvatarUrl: "",
       attachment,
     });
   });

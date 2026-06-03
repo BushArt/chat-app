@@ -43,6 +43,15 @@ const messageSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  // senderAvatarUrl is denormalized at write time (populated from User.avatarUrl
+  // when the message is saved). If a user later changes their avatar, historical
+  // messages retain the avatar that was in use when they were sent. This lets
+  // reloaded history render avatars even when the sender is currently offline,
+  // and avoids a race with the `online_users` socket event.
+  senderAvatarUrl: {
+    type: String,
+    default: ''
+  },
   attachment: {
     type: attachmentSchema,
     default: null

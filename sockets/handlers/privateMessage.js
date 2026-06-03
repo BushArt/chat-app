@@ -52,15 +52,17 @@ module.exports = function createPrivateMessageHandler(io, socket, state, message
     socket.to(room).emit('user_stopped_typing', { username: sender, room });
 
     try {
-      // Look up the sender's display name for denormalization
+      // Look up the sender's display name and avatar for denormalization
       let senderDisplayName = '';
+      let senderAvatarUrl = '';
       try {
-        const senderUser = await User.findOne({ username: sender }).select('displayName').lean();
-        if (senderUser && senderUser.displayName) {
-          senderDisplayName = senderUser.displayName;
+        const senderUser = await User.findOne({ username: sender }).select('displayName avatarUrl').lean();
+        if (senderUser) {
+          senderDisplayName = senderUser.displayName || '';
+          senderAvatarUrl = senderUser.avatarUrl || '';
         }
       } catch {
-        // Silently fall back to empty string if lookup fails
+        // Silently fall back to empty strings if lookup fails
       }
 
       const newMessage = new Message({
@@ -70,6 +72,7 @@ module.exports = function createPrivateMessageHandler(io, socket, state, message
         isGlobal: false,
         clientId: data.clientId,
         senderDisplayName,
+        senderAvatarUrl,
         attachment
       });
       await newMessage.save();
@@ -81,6 +84,7 @@ module.exports = function createPrivateMessageHandler(io, socket, state, message
         room,
         clientId: newMessage.clientId,
         senderDisplayName,
+        senderAvatarUrl,
         attachment
       };
 

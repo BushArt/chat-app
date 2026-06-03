@@ -1,4 +1,13 @@
-const { MongoMemoryServer } = require('mongodb-memory-server');
+let MongoMemoryServer;
+try {
+  MongoMemoryServer = require('mongodb-memory-server').MongoMemoryServer || require('mongodb-memory-server');
+} catch (e1) {
+  try {
+    MongoMemoryServer = require('mongodb-memory-server-core').MongoMemoryServer || require('mongodb-memory-server-core');
+  } catch (e2) {
+    throw e1;
+  }
+}
 const fs = require('fs');
 const path = require('path');
 

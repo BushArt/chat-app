@@ -84,10 +84,64 @@ export async function uploadAttachment(file, room, receiver, isGlobal) {
 
   const formData = new FormData();
   formData.append('file', file);
+  // If audio, compute duration and send it to the server so it can be persisted.
+  if (file.type && file.type.startsWith('audio/')) {
+    // Compute duration using an Audio element and object URL
+    try {
+      const objectUrl = URL.createObjectURL(file);
+      await new Promise((resolve, reject) => {
+        const audio = new Audio();
+        let resolved = false;
+        audio.preload = 'metadata';
+        audio.src = objectUrl;
+        audio.addEventListener('loadedmetadata', () => {
+          try {
+            const durationMs = Math.round((isFinite(audio.duration) && audio.duration > 0) ? audio.duration * 1000 : 0);
+            formData.append('duration_ms', String(durationMs));
+          } catch (e) {
+            // ignore and continue
+          }
+          resolved = true;
+          resolve();
+        });
+        audio.addEventListener('error', () => {
+          if (!resolved) {
+            resolved = true;
+            resolve();
+          }
+        });
+        // Safety timeout in case metadata never fires
+        setTimeout(() => { if (!resolved) { resolved = true; resolve(); } }, 2000);
+      });
+    } catch (e) {
+      // ignore errors computing duration
+    }
+  }
   formData.append('isGlobal', isGlobal ? 'true' : 'false');
   formData.append('room', isGlobal ? 'global' : room);
   if (!isGlobal) {
     formData.append('receiver', receiver);
+  }
+
+  // Debug hook: if set, also POST a copy of the file to `/debug/capture`
+  // so the server can write the exact bytes the browser sends to /tmp.
+  try {
+    if (window && window.__debugCaptureUploads) {
+      try {
+        const debugFd = new FormData();
+        debugFd.append('file', file);
+        // Fire-and-forget; don't block normal upload on debug capture.
+        fetch('/debug/capture', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + state.getCurrentToken() },
+          body: debugFd
+        }).catch(() => {});
+      } catch (e) {
+        // Ignore debug capture failures
+      }
+    }
+  } catch (e) {
+    // ignore window access errors in non-browser contexts
   }
 
   const res = await fetch('/messages/upload', {

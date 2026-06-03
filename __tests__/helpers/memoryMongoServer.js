@@ -1,4 +1,16 @@
-const { MongoMemoryServer } = require('mongodb-memory-server');
+let MongoMemoryServer;
+try {
+  // Prefer the main package export
+  MongoMemoryServer = require('mongodb-memory-server').MongoMemoryServer || require('mongodb-memory-server');
+} catch (e1) {
+  try {
+    // Fallback to the core package if present
+    MongoMemoryServer = require('mongodb-memory-server-core').MongoMemoryServer || require('mongodb-memory-server-core');
+  } catch (e2) {
+    // Re-throw original error for visibility
+    throw e1;
+  }
+}
 
 let mongoServerPromise;
 

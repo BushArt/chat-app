@@ -8,7 +8,8 @@ const attachmentSchema = new mongoose.Schema({
   filename: String,
   url: String,
   mimetype: String,
-  size: Number // bytes
+  size: Number, // bytes
+  duration_ms: Number // optional: duration for audio attachments in milliseconds
 }, { _id: false });
 
 const messageSchema = new mongoose.Schema({

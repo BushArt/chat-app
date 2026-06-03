@@ -188,20 +188,29 @@ router.post('/upload', verifyToken, uploadRateLimitMiddleware, attachmentUpload.
     // 6. Upload to Cloudinary
     let result;
     try {
+      // Prefer explicit resource_type for known media types to avoid
+      // Cloudinary treating images as 'raw' in some cases.
+      let resource_type = 'auto';
+      if (req.file.mimetype && req.file.mimetype.startsWith('image/')) resource_type = 'image';
+      else if (req.file.mimetype && req.file.mimetype.startsWith('video/')) resource_type = 'video';
+      else if (req.file.mimetype && req.file.mimetype.startsWith('audio/')) resource_type = 'video';
+
       result = await uploadToCloudinary(req.file.buffer, {
         public_id: publicId,
-        resource_type: 'auto'
+        resource_type
       });
     } catch (cloudinaryErr) {
       logger.error({ event: 'upload_failure', username: req.user.username, error: String(cloudinaryErr), mimetype: req.file.mimetype });
       return next(new HttpError('Failed to upload file.', 500, 'upload_failed'));
     }
 
+    // Try to pick up client-provided duration (in ms) for audio attachments
+    const durationMs = req.body && req.body.duration_ms ? Number(req.body.duration_ms) : 0;
     logger.info({
       event: 'upload_success',
       username: req.user.username,
       cloudinary_public_id: result.public_id,
-      duration_ms: 0 // Cloudinary SDK does not expose upload duration; left as 0
+      duration_ms: Number.isFinite(durationMs) ? durationMs : 0
     });
 
     // 7. Build and return attachment metadata
@@ -210,7 +219,8 @@ router.post('/upload', verifyToken, uploadRateLimitMiddleware, attachmentUpload.
       filename: req.file.originalname,
       url: result.secure_url,
       mimetype: req.file.mimetype,
-      size: req.file.size
+      size: req.file.size,
+      duration_ms: Number.isFinite(durationMs) && durationMs > 0 ? durationMs : undefined
     };
 
     res.json(attachment);

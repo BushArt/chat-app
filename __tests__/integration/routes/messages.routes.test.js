@@ -494,6 +494,36 @@ describe("POST /messages/upload", () => {
     // Multer returns HTTP 400 with { error, code } for file too large
     expect(res.body).toHaveProperty("error");
   });
+
+  test("preserves image bytes through upload pipeline", async () => {
+    jwt.verify.mockReturnValue({ id: "u1", username: "alice" });
+
+    // Small PNG (red dot) base64 fixture
+    const pngBase64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAn8B9Zf3h2kAAAAASUVORK5CYII=";
+    const fixtureBuffer = Buffer.from(pngBase64, 'base64');
+
+    let capturedBuffer = null;
+    uploadToCloudinary.mockImplementation(async (buffer, options) => {
+      capturedBuffer = Buffer.from(buffer); // copy
+      return {
+        secure_url: "https://res.cloudinary.com/test/chat-app/attachments/uuid-123",
+        public_id: "chat-app/attachments/uuid-123"
+      };
+    });
+
+    const app = createApp();
+    const res = await request(app)
+      .post("/messages/upload")
+      .field("room", "global")
+      .field("isGlobal", "true")
+      .attach("file", fixtureBuffer, { filename: "text.png", contentType: "image/png" })
+      .set("Authorization", "Bearer valid-token");
+
+    expect(res.status).toBe(200);
+    expect(capturedBuffer).not.toBeNull();
+    expect(Buffer.compare(capturedBuffer, fixtureBuffer)).toBe(0);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────

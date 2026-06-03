@@ -9,6 +9,7 @@ const connectDatabase = require('./config/db');
 const securityHeaders = require('./middleware/security');
 const authRoutes = require('./routes/auth');
 const messageRoutes = require('./routes/messages');
+const debugRoutes = require('./routes/debug');
 const { allowedOrigin } = require('./config/env');
 
 const app = express();
@@ -33,6 +34,7 @@ app.use(securityHeaders);
 
 app.use('/auth', authRoutes);
 app.use('/messages', messageRoutes);
+app.use('/debug', debugRoutes);
 
 app.get('/ping', (req, res) => {
   res.send('Server is running!');

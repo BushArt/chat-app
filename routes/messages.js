@@ -206,11 +206,16 @@ router.post('/upload', verifyToken, uploadRateLimitMiddleware, attachmentUpload.
 
     // Try to pick up client-provided duration (in ms) for audio attachments
     const durationMs = req.body && req.body.duration_ms ? Number(req.body.duration_ms) : 0;
+    const bufferChecksum = require('crypto').createHash('sha256').update(req.file.buffer).digest('hex');
     logger.info({
       event: 'upload_success',
       username: req.user.username,
       cloudinary_public_id: result.public_id,
-      duration_ms: Number.isFinite(durationMs) ? durationMs : 0
+      cloudinary_url: result.secure_url,
+      original_bytes: req.file.size,
+      buffer_sha256: bufferChecksum,
+      duration_ms: Number.isFinite(durationMs) ? durationMs : 0,
+      resource_type: req.file.mimetype && req.file.mimetype.startsWith('image/') ? 'image' : (req.file.mimetype && req.file.mimetype.startsWith('video/') ? 'video' : 'auto')
     });
 
     // 7. Build and return attachment metadata
@@ -222,6 +227,14 @@ router.post('/upload', verifyToken, uploadRateLimitMiddleware, attachmentUpload.
       size: req.file.size,
       duration_ms: Number.isFinite(durationMs) && durationMs > 0 ? durationMs : undefined
     };
+
+    logger.debug({
+      event: 'upload_response',
+      username: req.user.username,
+      attachment_type: attachment.type,
+      returned_url: attachment.url,
+      returned_size: attachment.size
+    });
 
     res.json(attachment);
   } catch (err) {
